@@ -180,3 +180,6 @@ Para evitar el sobrediseño y la complejidad innecesaria en el MVP, se establece
 - [🧠 Lógica Core e Inferencia](MODEL.md)
 - [🗺️ Roadmap de Producto](ROADMAP.md)
 - [🎯 Alcance MVP](SCOPE.md)
+- [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
+- [📋 Product Backlog](PRODUCT_BACKLOG.md)
+- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

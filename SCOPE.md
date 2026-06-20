@@ -51,3 +51,6 @@ Para certificar que una funcionalidad ha sido completada y está lista para prod
 - [🗄️ Modelo de Base de Datos](DATABASE.md)
 - [🧠 Lógica Core e Inferencia](MODEL.md)
 - [🗺️ Roadmap de Producto](ROADMAP.md)
+- [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
+- [📋 Product Backlog](PRODUCT_BACKLOG.md)
+- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

@@ -71,3 +71,6 @@ gantt
 - [🗄️ Modelo de Base de Datos](DATABASE.md)
 - [🧠 Lógica Core e Inferencia](MODEL.md)
 - [🎯 Alcance MVP](SCOPE.md)
+- [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
+- [📋 Product Backlog](PRODUCT_BACKLOG.md)
+- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

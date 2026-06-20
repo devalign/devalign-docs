@@ -99,3 +99,6 @@ Las brechas son ordenadas descendentemente por su $\text{Prioridad}_s$ y clasifi
 - [🗄️ Modelo de Base de Datos](DATABASE.md)
 - [🗺️ Roadmap de Producto](ROADMAP.md)
 - [🎯 Alcance MVP](SCOPE.md)
+- [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
+- [📋 Product Backlog](PRODUCT_BACKLOG.md)
+- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)
