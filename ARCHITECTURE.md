@@ -123,8 +123,8 @@ La infraestructura del MVP está diseñada para ser altamente costo-efectiva, es
 
 ## 🔗 Referencias
 
-- [🤝 Contratos de Interfaz](file:///c:/Projects/Devalign/devalign-docs/CONTRACTS.md)
-- [🗄️ Modelo de Base de Datos](file:///c:/Projects/Devalign/devalign-docs/DATABASE.md)
-- [🧠 Lógica Core e Inferencia](file:///c:/Projects/Devalign/devalign-docs/MODEL.md)
-- [🗺️ Roadmap de Producto](file:///c:/Projects/Devalign/devalign-docs/ROADMAP.md)
-- [🎯 Alcance MVP](file:///c:/Projects/Devalign/devalign-docs/SCOPE.md)
+- [🤝 Contratos de Interfaz](CONTRACTS.md)
+- [🗄️ Modelo de Base de Datos](DATABASE.md)
+- [🧠 Lógica Core e Inferencia](MODEL.md)
+- [🗺️ Roadmap de Producto](ROADMAP.md)
+- [🎯 Alcance MVP](SCOPE.md)

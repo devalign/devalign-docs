@@ -46,8 +46,8 @@ Para certificar que una funcionalidad ha sido completada y está lista para prod
 
 ## 🔗 Referencias
 
-- [🏗️ Arquitectura Técnica](file:///c:/Projects/Devalign/devalign-docs/ARCHITECTURE.md)
-- [🤝 Contratos de Interfaz](file:///c:/Projects/Devalign/devalign-docs/CONTRACTS.md)
-- [🗄️ Modelo de Base de Datos](file:///c:/Projects/Devalign/devalign-docs/DATABASE.md)
-- [🧠 Lógica Core e Inferencia](file:///c:/Projects/Devalign/devalign-docs/MODEL.md)
-- [🗺️ Roadmap de Producto](file:///c:/Projects/Devalign/devalign-docs/ROADMAP.md)
+- [🏗️ Arquitectura Técnica](ARCHITECTURE.md)
+- [🤝 Contratos de Interfaz](CONTRACTS.md)
+- [🗄️ Modelo de Base de Datos](DATABASE.md)
+- [🧠 Lógica Core e Inferencia](MODEL.md)
+- [🗺️ Roadmap de Producto](ROADMAP.md)

@@ -160,8 +160,8 @@ Retorna una representación en formato JSON de grafo del mapa de conocimiento de
 
 ## 🔗 Referencias
 
-- [🏗️ Arquitectura Técnica](file:///c:/Projects/Devalign/devalign-docs/ARCHITECTURE.md)
-- [🗄️ Modelo de Base de Datos](file:///c:/Projects/Devalign/devalign-docs/DATABASE.md)
-- [🧠 Lógica Core e Inferencia](file:///c:/Projects/Devalign/devalign-docs/MODEL.md)
-- [🗺️ Roadmap de Producto](file:///c:/Projects/Devalign/devalign-docs/ROADMAP.md)
-- [🎯 Alcance MVP](file:///c:/Projects/Devalign/devalign-docs/SCOPE.md)
+- [🏗️ Arquitectura Técnica](ARCHITECTURE.md)
+- [🗄️ Modelo de Base de Datos](DATABASE.md)
+- [🧠 Lógica Core e Inferencia](MODEL.md)
+- [🗺️ Roadmap de Producto](ROADMAP.md)
+- [🎯 Alcance MVP](SCOPE.md)
