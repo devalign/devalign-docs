@@ -51,7 +51,7 @@ Utilización del algoritmo **UMAP** para reducción de dimensionalidad (a 15-d) 
 > **Decisión de Diseño:** Se ha descartado por completo K-Means y K-Modes para evitar predefinir arbitrariamente el número de agrupaciones ($K$) y tolerar de forma nativa el ruido en los datos de entrada.
 
 #### b) Extracción NLP y Normalización Taxonómica
-Procesamiento del currículum vítae (CV) mediante modelos de lenguaje (LLM) estructurados en formato JSON. El documento se procesa para extraer entidades que luego son normalizadas hacia una taxonomía canónica mediante coincidencia exacta $O(1)$ y búsqueda de embeddings semánticos con **Voyage AI** (similitud de coseno $\ge 0.88$).
+Procesamiento del currículum vítae (CV) mediante un motor híbrido de modelos de lenguaje (LLM) configurado según el entorno (Groq en desarrollo / OpenAI GPT-4o-mini con Structured Outputs en producción) estructurado en formato JSON. El documento se procesa para extraer entidades que luego son normalizadas hacia una taxonomía canónica mediante coincidencia exacta $O(1)$ y búsqueda de embeddings semánticos consistente con **Voyage AI** (similitud de coseno $\ge 0.88$).
 
 #### c) Motor de Diagnóstico de Brechas (Alineación)
 Análisis de conjuntos que contrasta las habilidades del usuario contra el clúster objetivo utilizando el algoritmo **Weighted Jaccard Similarity** (con créditos del 30% por coincidencia parcial de dominios tecnológicos). Esto permite identificar brechas exactas a nivel de herramientas, lenguajes y metodologías.
@@ -97,7 +97,9 @@ A diferencia de plataformas de aprendizaje genéricas, este sistema utiliza **In
 
 ## 🛠️ Tecnologías Utilizadas
 - **Backend:** FastAPI (Python).
-- **IA/ML:** UMAP + HDBSCAN para clustering, OpenAI/Claude API para extracción estructurada, Voyage AI API para normalización semántica.
+- **IA/ML:** UMAP + HDBSCAN para clustering.
+  - *Extracción estructurada (LLM):* Híbrido basado en el entorno (`APP_ENV`). En desarrollo, Groq (Llama 3.3 70B) para mínima latencia. En producción, OpenAI (GPT-4o-mini) para máxima confiabilidad mediante *Structured Outputs* (JSON Schema garantizado).
+  - *Normalización semántica:* Voyage AI API (`voyage-4-lite`) unificado en todos los entornos para estabilidad del espacio vectorial de base de datos.
 - **Persistencia y Auth:** Supabase (PostgreSQL con pgvector, Auth, Storage para CVs).
 - **Esquema de BD:** SQLAlchemy + Alembic como SSOT.
 - **Frontend:** Next.js 16 (App Router), Tailwind CSS v4, pnpm.

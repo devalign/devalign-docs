@@ -107,6 +107,11 @@ graph TD
 > **Decisión de Arquitectura 2: Integración de Scraper Puramente Offline**
 > En el MVP, el raspado de vacantes de Computrabajo es un proceso desacoplado y fuera de línea. La API de backend no expone endpoints para disparar el scraping en tiempo real. Los datos recolectados se insertan directamente en la base de datos a través de scripts de inicialización (`seed`), eliminando la sobrecarga operativa en el servidor de producción.
 
+> **Decisión de Arquitectura 3: Ecosistema LLM Híbrido y Estabilidad Vectorial**
+> El sistema divide las tareas de IA en dos servicios desacoplados:
+> 1. **Extracción Semántica (LLMs):** Alterna dinámicamente según `APP_ENV`. En desarrollo, utiliza la API de **Groq** (Llama 3.3 70B) para conseguir latencia mínima y cero costes. En producción, utiliza **OpenAI** (gpt-4o-mini) para garantizar la consistencia en el formateo JSON (Structured Outputs) y aportar la madurez de marca requerida en el sustento de la tesis.
+> 2. **Normalización y Búsqueda (Embeddings):** Utiliza **Voyage AI** (`voyage-4-lite`) de forma unificada en desarrollo y producción para salvaguardar la estabilidad matemática de los vectores almacenados en PostgreSQL (`pgvector`), evitando problemas de incompatibilidad de espacios métricos vectoriales.
+
 ---
 
 ## 🚀 Estrategia de Despliegue

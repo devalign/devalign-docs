@@ -23,6 +23,10 @@ La entrada de texto libre desde los currículos (CVs) o las vacantes de Computra
 * **Umbral de Aceptación:** Si la similitud de coseno más alta es $\ge 0.88$, el término es homologado a la habilidad existente correspondiente.
 * Si el puntaje es menor a $0.88$, el sistema clasifica el término como una nueva habilidad candidata para posterior revisión del administrador del sistema.
 
+> [!IMPORTANT]
+> **Coherencia y Estabilidad del Espacio Vectorial:**
+> Para garantizar que el umbral de similitud semántica ($\ge 0.88$) funcione de manera consistente, el proveedor de embeddings (**Voyage AI - voyage-4-lite**) se mantiene unificado tanto en desarrollo como en producción. Cambiar el proveedor de embeddings dinámicamente sin migrar los datos corrompería las búsquedas relacionales semánticas (debido a la incompatibilidad matemática de los espacios vectoriales). En caso de una migración futura, se debe ejecutar el script `scripts/reembed_skills.py` para re-calcular los vectores guardados en la base de datos.
+
 ---
 
 ## 📐 Algoritmo de Alineación de Perfiles: Weighted Jaccard
