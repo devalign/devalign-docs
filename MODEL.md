@@ -50,7 +50,7 @@ Donde:
 
 ## 🗄️ Dimensionalidad y Agrupamiento Offline
 
-Para descubrir dinámicamente las tendencias del mercado a partir del conjunto de ofertas recolectadas por el scraper, Devalign utiliza un pipeline de Machine Learning no supervisado ejecutado de manera asíncrona:
+Para descubrir dinámicamente las tendencias del mercado a partir del conjunto de ofertas recolectadas por el scraper, Devalign utiliza un pipeline de Machine Learning no supervisado ejecutado de manera asíncrona en el repositorio dedicado `devalign-ml` (Google Colab / Entorno local de ML):
 
 ```mermaid
 graph LR

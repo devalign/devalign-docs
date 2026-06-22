@@ -92,7 +92,7 @@ sequenceDiagram
 
 ### 2. Flujo Offline / Batch (Entrenamiento y Agrupamiento)
 
-Este flujo se ejecuta periódicamente de forma programada o manual mediante scripts de administración de datos en el backend para actualizar los clústeres del mercado.
+Este flujo se ejecuta periódicamente de forma manual o programada a través del pipeline de Machine Learning en el repositorio `devalign-ml` (ejecutado localmente o vía Google Colab) para actualizar los clústeres del mercado directamente en la base de datos (Supabase).
 
 ```mermaid
 graph TD
