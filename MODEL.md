@@ -1,108 +1,167 @@
-# 🧠 Lógica Core e Inferencia - Devalign
+# 🧠 Lógica Core e Inferencia
 
-Este documento describe la lógica de inteligencia artificial, procesamiento de lenguaje natural (NLP) y los algoritmos matemáticos utilizados en Devalign para el MVP. Cubre la normalización de habilidades, la alineación de perfiles y el agrupamiento del mercado laboral.
+Este documento describe la lógica de inteligencia artificial, procesamiento de lenguaje natural (NLP) y los algoritmos matemáticos utilizados en Devalign. Cubre la normalización de habilidades, la inferencia de grafo de conocimiento, la alineación de perfiles, el agrupamiento del mercado laboral y las métricas de competencia.
 
 ---
 
-## 🏷️ Normalización Semántica de Habilidades
+## Normalización Semántica de Habilidades
 
-La entrada de texto libre desde los currículos (CVs) o las vacantes de Computrabajo debe convertirse a un conjunto estandarizado de habilidades. Para lograr esto de manera eficiente y escalable, el sistema implementa una estrategia híbrida:
+La entrada de texto libre desde los CVs o las vacantes debe convertirse a un conjunto estandarizado de habilidades. El sistema implementa una estrategia híbrida de tres etapas:
 
-### 1. Coincidencia Exacta O(1) (Búsqueda en Diccionario)
-* Se realiza una normalización rápida buscando el término crudo o sus sinónimos conocidos en la tabla `skill_aliases`.
-* **Complejidad:** $O(1)$ en memoria (caché o indexado rápido en base de datos).
-* Si el alias existe, se devuelve el `skill_id` estandarizado inmediatamente, evitando APIs externas.
+### 1. Coincidencia Exacta O(1) (Diccionario de Aliases)
+- Búsqueda del término crudo o sus sinónimos en la tabla `skill_aliases`.
+- **Complejidad:** $O(1)$ indexado en base de datos.
+- Si el alias existe, se devuelve el `skill_id` estandarizado inmediatamente.
 
-### 2. Recuperación Semántica (Fallback de Embeddings)
-* Si no hay coincidencia exacta, el sistema genera la representación vectorial del término utilizando la API de **Voyage AI** (modelo de embeddings densos de 1024 dimensiones).
-* Se ejecuta una búsqueda de similitud de coseno contra los embeddings vectoriales persistidos en la tabla `skills` de PostgreSQL utilizando `pgvector`.
-* Se calcula la Similitud de Coseno utilizando la fórmula:
+### 2. Recuperación Semántica (Embeddings Voyage AI)
+- Si no hay coincidencia exacta, se genera el embedding del término usando **Voyage AI** (`voyage-4-lite`, 1024 dimensiones).
+- Búsqueda de similitud de coseno contra los embeddings en la tabla `skills` usando `pgvector`:
   \[
   \text{Similitud}(A, B) = \frac{A \cdot B}{\|A\| \|B\|}
   \]
-* **Umbral de Aceptación:** Si la similitud de coseno más alta es $\ge 0.88$, el término es homologado a la habilidad existente correspondiente.
-* Si el puntaje es menor a $0.88$, el sistema clasifica el término como una nueva habilidad candidata para posterior revisión del administrador del sistema.
+- **Umbral de Aceptación:** $\ge 0.88$ para homologar a la habilidad existente.
+- Si el puntaje es menor a $0.88$, pasa a la etapa 3.
 
-> [!IMPORTANT]
-> **Coherencia y Estabilidad del Espacio Vectorial:**
-> Para garantizar que el umbral de similitud semántica ($\ge 0.88$) funcione de manera consistente, el proveedor de embeddings (**Voyage AI - voyage-4-lite**) se mantiene unificado tanto en desarrollo como en producción. Cambiar el proveedor de embeddings dinámicamente sin migrar los datos corrompería las búsquedas relacionales semánticas (debido a la incompatibilidad matemática de los espacios vectoriales). En caso de una migración futura, se debe ejecutar el script `scripts/reembed_skills.py` para re-calcular los vectores guardados en la base de datos.
+### 3. Fallback LLM
+- Si no hay coincidencia semántica suficiente, se envía el término al LLM (Groq/OpenAI) para determinar si es una variante de una skill existente o una nueva skill candidata.
+- Las skills no mapeadas se marcan para revisión del administrador.
+
+> **Coherencia del Espacio Vectorial:** El proveedor de embeddings (**Voyage AI**) se mantiene unificado en desarrollo y producción para garantizar que el umbral de similitud ($\ge 0.88$) funcione de manera consistente.
 
 ---
 
-## 📐 Algoritmo de Alineación de Perfiles: Weighted Jaccard
+## Inferencia Ascendente de Habilidades (Knowledge Graph)
 
-Para determinar qué tan alineado está el perfil de un usuario con un clúster específico del mercado laboral, Devalign no utiliza similitudes planas. En su lugar, aplica un algoritmo de **Jaccard Ponderado** (Weighted Jaccard) con consideraciones para coincidencias parciales por dominios.
+Para evitar brechas redundantes y obtener alineaciones más precisas, Devalign implementa un paso de **inferencia ascendente** antes del cálculo de afinidad:
 
-### Fórmula General
-La alineación del usuario $U$ respecto a un clúster $C$ se define mediante la ecuación:
+1. **Expansión Jerárquica:** Recorrido BFS de las relaciones `BELONGS_TO` y `REQUIRES` hacia arriba en el grafo.
+   - *Ejemplo:* Si el usuario sabe `PostgreSQL`, se infiere que posee `SQL`.
+2. **Prevención de Ciclos:** Conjunto de nodos visitados para evitar bucles infinitos.
+3. **Trazabilidad (Provenance):** Las habilidades inferidas se marcan con `inferred_from` en el DTO, detallando qué habilidades de nivel inferior dispararon la inferencia.
+4. **Optimización:** El grafo de relaciones se carga en memoria mediante una única consulta (`get_skill_graph`) en lugar de consultas recursivas.
+5. **Tipos de Relaciones:** `BELONGS_TO` (pertenencia jerárquica), `REQUIRES` (dependencia técnica), `ALTERNATIVE_TO` (alternativas equivalentes).
+
+---
+
+## Algoritmo de Alineación de Perfiles: Weighted Jaccard
+
+Para determinar la afinidad del perfil de un desarrollador con un clúster específico del mercado laboral, Devalign calcula un coeficiente de **Jaccard Ponderado** (Weighted Jaccard) modificado por coincidencia de dominios y frecuencia de competencias.
+
+### Formulación Matemática
+
+Sea $U_{tech}$ el conjunto de habilidades técnicas normalizadas y expandidas del usuario, y sea $C_{tech}$ el conjunto de habilidades técnicas del clúster del mercado laboral. La afinidad de alineación $J_W(U_{tech}, C_{tech})$ se calcula como:
 
 \[
-J_W(U, C) = \frac{\sum_{s \in U \cap C} w_s + \sum_{s' \in P_{match}} 0.3 \times w_{s'}}{\sum_{s \in U \cup C} w_s}
+J_W(U_{tech}, C_{tech}) = \frac{\sum_{s \in U_{tech} \cap C_{tech}} w_s f_s + \sum_{s \in C_{tech} \setminus U_{tech}} w_s f_s p_s}{\sum_{s \in U_{tech} \cap C_{tech}} w_s f_s + \sum_{s \in C_{tech} \setminus U_{tech}} w_s f_s + \sum_{s \in U_{tech} \setminus C_{tech}} w_s}
 \]
 
 Donde:
-* $U$: Conjunto de habilidades normalizadas que posee el usuario.
-* $C$: Conjunto de habilidades requeridas en el clúster.
-* $w_s$: Peso (importancia) de la habilidad $s$ en el clúster.
-* $P_{match}$ (Coincidencia Parcial): Habilidades en las que el usuario no tiene la herramienta exacta pero posee otra de la misma categoría o dominio (ej: el usuario tiene *MySQL* y el clúster requiere *PostgreSQL*). Se otorga un crédito parcial del **30%** sobre el peso original de la habilidad.
+- **$w_s$ (Peso de Habilidad):** Importancia de la habilidad $s$. Si está en el clúster, se extrae de `cluster_skills.importance_score`; si no, se usa el peso por defecto (`skills.weight`).
+- **$f_s$ (Frecuencia):** Frecuencia de la habilidad en el clúster. Si $s \in C_{tech}$, se lee de las ofertas; si no, se evalúa como $1.0$.
+- **$p_s$ (Coincidencia Parcial por Dominio):** Se otorga un crédito del **30%** ($p_s = 0.3$) sobre habilidades del clúster que el usuario no tiene, pero donde posee una alternativa del mismo dominio:
+  \[
+  p_s = \begin{cases}
+  0.3 & \text{si } \exists u \in U_{tech} \text{ tal que } \text{domains}(u) \cap \text{domains}(s) \neq \emptyset \\
+  0.0 & \text{en caso contrario}
+  \end{cases}
+  \]
 
 ---
 
-## 🗄️ Dimensionalidad y Agrupamiento Offline
+## ICT Score
 
-Para descubrir dinámicamente las tendencias del mercado a partir del conjunto de ofertas recolectadas por el scraper, Devalign utiliza un pipeline de Machine Learning no supervisado ejecutado de manera asíncrona en el repositorio dedicado `devalign-ml` (Google Colab / Entorno local de ML):
+El ICT Score mide el nivel de competencia de un desarrollador en una habilidad específica en una escala de 0 a 10:
+
+\[
+\text{ICT Score} = \min\left(10, \text{self\_taught\_points} + \text{projects\_points} + \text{exp\_points} + \text{cert\_points}\right)
+\]
+
+Donde cada componente aporta:
+- **Autodidacta** (`self_taught`): **1 punto** si es verdadero.
+- **Proyectos personales** (`personal_projects`): **2 puntos** si es verdadero.
+- **Años de experiencia** (`years_of_experience`): **3 puntos por año**.
+- **Certificación** (`has_certification`): **4 puntos** si es verdadero.
+
+El ICT Score se persiste en `profile_skills.ict_score` y se utiliza para matizar la confianza en las habilidades detectadas.
+
+---
+
+## Seniority Estimation
+
+La senioridad se mapea a los niveles de responsabilidad de la taxonomía **SFIA 9** y se estima a través de dos mecanismos:
+
+1. **Heurística de texto del CV (Fase de extracción):**
+   - **Senior:** Si el texto del currículum contiene palabras clave como `architect`, `lead`, `principal`, `staff`, `senior`, `tech lead`.
+   - **Mid:** Si contiene palabras como `mid`, `intermediate`, `semi-senior`.
+   - **Junior:** En caso contrario.
+
+2. **Heurística de años de experiencia (Fase de finalización):**
+   - **Senior:** Si `years_experience >= 6`.
+   - **Mid:** Si `years_experience` está entre 3 y 5.
+   - **Junior:** Si `years_experience < 3`.
+
+Adicionalmente, el dominio del sistema incluye el nivel de senioridad **Staff** (mapeado a niveles de responsabilidad SFIA 6+), disponible en la enumeración `SeniorityLevel` para extensiones futuras del análisis.
+
+---
+
+## Dimensionalidad y Agrupamiento Offline
+
+Para clasificar las ofertas del mercado laboral IT de Perú, Devalign ejecuta un proceso de ML no supervisado en el módulo `devalign-ml`:
 
 ```mermaid
 graph LR
-    Raw[Habilidades Normalizadas por Oferta] -->|One-Hot / TF-IDF| Mat[Matriz Esparsa Alta Dimensionalidad]
-    Mat -->|Reducción de Dimensionalidad: UMAP| Red[Espacio Vectorial 15-d]
-    Red -->|Clustering: HDBSCAN| Clust[Grupos de Habilidades / Clústeres]
+    Raw[Skills Normalizadas por Oferta] -->|Media-pooling 1024d| Emb[Embeddings 1024-d]
+    Emb -->|UMAP: 1024d → 15d| Red[Espacio Reducido 15-d]
+    Red -->|HDBSCAN min_cluster_size=15| Clust[Clústeres]
+    Clust -->|Reasignar Ruido| Centroides[Centroides 1024-d]
+    Centroides -->|Groq LLM| Names[Nombres de Clúster]
 ```
 
 ### 1. Reducción de Dimensionalidad (UMAP)
-* Las ofertas de trabajo contienen un espacio disperso de miles de habilidades posibles.
-* El sistema aplica **UMAP** (Uniform Manifold Approximation and Projection) para proyectar la matriz de características a un espacio de **15 dimensiones** ($15\text{-d}$).
-* **Razón técnica:** Mantener la estructura global y local antes de agrupar, reduciendo la maldición de la dimensionalidad sin perder la correlación semántica del perfil.
+- Proyección a **15 dimensiones** usando **UMAP** (Uniform Manifold Approximation and Projection).
+- Parámetros: `n_neighbors=15`, `n_components=15`, `min_dist=0.0`, `metric=cosine`.
 
 ### 2. Agrupamiento Densidad-Basado (HDBSCAN)
-* En el espacio reducido de 15 dimensiones, se ejecuta **HDBSCAN** (Hierarchical Density-Based Spatial Clustering of Applications with Noise).
-* **Parámetros Core:** $\text{min\_cluster\_size} = 15$.
-* **Ventajas del Algoritmo:**
-  - No requiere predefinir la cantidad de clústeres ($K$), a diferencia de K-Means o K-Modes (que han sido eliminados por completo del sistema).
-  - Tolera ruido (ofertas de trabajo atípicas o mal formateadas se catalogan como ruido en lugar de forzar su agrupación).
-  - Maneja clústeres de densidades variables en el mercado laboral.
+- **HDBSCAN** con `min_cluster_size=15`, `min_samples=2`, `metric=euclidean`.
+- Se descartan K-Means y K-Modes por requerir un número fijo de clústeres.
+
+### 3. Post-procesamiento
+- **Silhouette Score** (excluyendo ruido) para evaluar calidad.
+- **Reasignación de ruido** al centroide más cercano.
+- **Cálculo de centroides** en 1024 dimensiones.
+- **Nombrado de clústeres** mediante Groq LLM (`llama-3.3-70b-versatile`) en batch con fallback individual.
 
 ---
 
-## 📊 Cálculo de Prioridad de Brechas Técnicas
+## Priorización de Brechas Técnicas
 
-Cuando un usuario es asignado a su clúster de mayor afinidad, las habilidades del clúster que el usuario no posee son catalogadas como brechas técnicas. Para construir un plan de acción coherente en el MVP sin incurrir en costos de procesamiento de lenguaje natural en tiempo real, las brechas se priorizan usando una puntuación de prioridad determinista:
+Cuando un usuario es comparado contra su clúster de mayor afinidad, las habilidades del clúster que no posee se catalogan como brechas. El motor calcula un puntaje de prioridad:
 
 \[
 \text{Prioridad}_s = \text{Peso}_s \times \text{Frecuencia}_s
 \]
 
 Donde:
-* $\text{Peso}_s$: Relevancia de la habilidad $s$ en el clúster del mercado laboral.
-* $\text{Frecuencia}_s$: Frecuencia de aparición de la habilidad $s$ en las ofertas que forman el clúster.
+- $\text{Peso}_s$ (`importance_score`): Peso de relevancia en el clúster.
+- $\text{Frecuencia}_s$: Frecuencia en las ofertas del clúster.
 
-Las brechas son ordenadas descendentemente por su $\text{Prioridad}_s$ y clasificadas en tres niveles:
+Las brechas se clasifican en tres niveles:
 
-| Rango de Prioridad | Nivel de Brecha | Acción del Plan |
+| Prioridad | Categoría | Impacto |
 | :--- | :--- | :--- |
-| $\text{Prioridad}_s \ge 0.70$ | **Alta Prioridad** | Requiere atención inmediata. Se sugiere al usuario adquirirla primero para integrarse al clúster. |
-| $0.40 \le \text{Prioridad}_s < 0.70$ | **Media Prioridad** | Recomendable de aprender una vez cubiertas las necesidades principales. |
-| $\text{Prioridad}_s < 0.40$ | **Baja Prioridad** | Opcional, aporta valor complementario al perfil profesional. |
+| $\ge 2.0$ | **Crítica (critical)** | Indispensable. Aprender de inmediato. |
+| $1.0 - 2.0$ | **Alta (high)** | Alto valor diferencial. |
+| $< 1.0$ | **Media (medium)** | Complementaria u opcional. |
 
 ---
 
-## 🔗 Referencias
+## Referencias
 
-- [🏗️ Arquitectura Técnica](ARCHITECTURE.md)
-- [🤝 Contratos de Interfaz](CONTRACTS.md)
-- [🗄️ Modelo de Base de Datos](DATABASE.md)
-- [🗺️ Roadmap de Producto](ROADMAP.md)
-- [🎯 Alcance MVP](SCOPE.md)
-- [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
-- [📋 Product Backlog](PRODUCT_BACKLOG.md)
-- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)
+- [Arquitectura Técnica](ARCHITECTURE.md)
+- [Contratos de Interfaz](CONTRACTS.md)
+- [Modelo de Base de Datos](DATABASE.md)
+- [Roadmap de Producto](ROADMAP.md)
+- [Alcance MVP](SCOPE.md)
+- [Documento de Requerimientos de Producto (PRD)](PRD.md)
+- [Product Backlog](PRODUCT_BACKLOG.md)
+- [Sprint Backlog](SPRINT_BACKLOG.md)
