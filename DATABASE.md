@@ -1,6 +1,8 @@
 # 🗄️ Modelo de Base de Datos
 
-Este documento define la estructura y el esquema de la base de datos relacional de Devalign, implementada en PostgreSQL y gestionada a través de SQLAlchemy + Alembic como SSOT (Single Source of Truth). Contiene 15 tablas activas con 18 migraciones aplicadas.
+Este documento define la estructura y el esquema formal de la base de datos relacional de Devalign en PostgreSQL, gestionada mediante **SQLAlchemy 2.0 (async) + Alembic** como única fuente de verdad (Single Source of Truth). El sistema consta de exactamente **15 tablas relacionales** respaldadas por **23 migraciones Alembic**.
+
+---
 
 ## Diagrama Entidad-Relación (ERD)
 
@@ -12,6 +14,18 @@ erDiagram
         varchar full_name
         varchar avatar_url
         timestamp created_at
+    }
+    cv_documents {
+        uuid id PK
+        uuid user_id FK "Index"
+        varchar storage_path
+        varchar original_filename
+        varchar content_type
+        integer size_bytes
+        varchar status "processing|skills_detected|completed|failed"
+        text error_message
+        jsonb extracted_data
+        timestamp uploaded_at
     }
     profiles {
         uuid profile_id PK
@@ -34,22 +48,10 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
-    cv_documents {
-        uuid id PK
-        uuid user_id FK "Index"
-        varchar storage_path
-        varchar original_filename
-        varchar content_type
-        integer size_bytes
-        varchar status "processing|extracted|completed|error"
-        text error_message
-        jsonb extracted_data
-        timestamp uploaded_at
-    }
     skills {
         uuid skill_id PK
         varchar name UK "Index"
-        varchar esco_uri UK
+        varchar status "canonical|pending_review|deprecated"
         varchar nature "concept|tech|soft"
         jsonb domain_tags
         jsonb core_domains
@@ -57,15 +59,15 @@ erDiagram
         vector embedding "1024 dims"
         timestamp created_at
     }
-    profile_skills {
-        uuid profile_skill_id PK
-        uuid profile_id FK "Index"
+    skill_standards {
+        uuid id PK
         uuid skill_id FK "Index"
-        boolean self_taught
-        boolean personal_projects
-        integer years_of_experience
-        boolean has_certification
-        numeric ict_score "5,2"
+        varchar standard_name
+        varchar standard_uri UK "Index"
+        varchar standard_code
+        varchar standard_type "Index"
+        varchar category_name "Index"
+        varchar subcategory_name "Index"
     }
     skill_aliases {
         uuid alias_id PK
@@ -77,6 +79,16 @@ erDiagram
         uuid source_skill_id FK "Index"
         uuid target_skill_id FK "Index"
         varchar relation_type "belongs_to|requires|alternative_to"
+    }
+    profile_skills {
+        uuid profile_skill_id PK
+        uuid profile_id FK "Index"
+        uuid skill_id FK "Index"
+        boolean self_taught
+        boolean personal_projects
+        integer years_of_experience
+        boolean has_certification
+        numeric ict_score "5,2"
     }
     clusters {
         uuid cluster_id PK
@@ -125,15 +137,24 @@ erDiagram
         varchar location
         varchar modality
         varchar salary
+        numeric min_salary_usd "Index"
+        numeric max_salary_usd
+        varchar currency
+        boolean is_salary_negotiable
         varchar experience_years
+        integer min_experience_years "Index"
+        integer max_experience_years
         varchar education_level
         text full_description
         text source_url UK
         varchar portal
+        varchar country "Index"
         varchar date_posted
+        timestamp published_at "Index"
         jsonb raw_hard_skills
         jsonb raw_soft_skills
         boolean is_normalized "Index"
+        boolean ai_enriched "Index"
         timestamp scraped_at
     }
     offer_skills {
@@ -148,202 +169,310 @@ erDiagram
     users ||--|| profiles : "has"
     profiles ||--o{ profile_skills : "has_skills"
     skills ||--o{ profile_skills : "linked_in"
-    skills ||--o{ skill_aliases : "has_aliases"
+    skills ||--o{ skill_standards : "standardized_by"
+    skills ||--o{ skill_aliases : "aliased_as"
     skills ||--o{ skill_relations : "source_of"
     skills ||--o{ skill_relations : "target_of"
-    profiles ||--o{ diagnostics : "receives"
-    clusters ||--o{ diagnostics : "evaluates"
+    skills ||--o{ cluster_skills : "included_in"
     clusters ||--o{ cluster_skills : "contains"
     clusters ||--o{ cluster_skill_trends : "tracks"
-    skills ||--o{ cluster_skills : "weighted_in"
-    skills ||--o{ cluster_skill_trends : "trending"
-    diagnostics ||--o{ diagnostic_skills : "includes"
-    skills ||--o{ diagnostic_skills : "referenced_in"
-    clusters ||--o{ job_offers : "classified_as"
+    skills ||--o{ cluster_skill_trends : "evaluated_in"
+    profiles ||--o{ diagnostics : "evaluated_in"
+    clusters ||--o{ diagnostics : "matches"
+    diagnostics ||--o{ diagnostic_skills : "details"
+    skills ||--o{ diagnostic_skills : "scoped_in"
+    clusters ||--o{ job_offers : "categorizes"
     job_offers ||--o{ offer_skills : "requires"
-    skills ||--o{ offer_skills : "demanded_in"
+    skills ||--o{ offer_skills : "tagged_in"
 ```
 
 ---
 
 ## Diccionario de Datos
 
-### 1. Tabla `users`
-Metadatos de usuario sincronizados desde Supabase Auth en el aprovisionamiento JIT.
-- `user_id` (`UUID`, PK): Identificador del usuario provisto por Supabase.
-- `email` (`VARCHAR(255)`, Unique, Indexed): Correo electrónico del usuario.
-- `full_name` (`VARCHAR(255)`, Nullable): Nombre completo.
-- `avatar_url` (`VARCHAR(512)`, Nullable): Enlace a la foto de perfil.
-- `created_at` (`TIMESTAMP WITH TIME ZONE`): Fecha de creación del registro.
+### 1. `users`
+Tabla pública de usuarios sincronizada Just-In-Time con `auth.users` de Supabase.
 
-### 2. Tabla `profiles`
-Información profesional consolidada del desarrollador.
-- `profile_id` (`UUID`, PK): Identificador único de perfil.
-- `user_id` (`UUID`, FK → `users.user_id`, Unique): Relación 1:1 con la cuenta.
-- `full_name` (`VARCHAR(150)`, Nullable): Nombre para despliegue en CV.
-- `current_job_role` (`VARCHAR(100)`, Nullable): Puesto actual.
-- `professional_summary` (`TEXT`, Nullable): Resumen profesional extraído del CV.
-- `years_experience` (`INTEGER`, Nullable): Años totales de experiencia.
-- `preferred_modality` (`VARCHAR(50)`, Nullable): Remoto, Presencial, Híbrido.
-- `cv_url` (`TEXT`, Nullable): URL del CV activo.
-- `cv_raw_text` (`TEXT`, Nullable): Texto completo extraído del CV.
-- `cv_id` (`UUID`, Nullable): ID del documento CV activo.
-- `cv_embedding` (`VECTOR(1024)`, Nullable): Embedding Voyage AI del CV.
-- `work_experience` (`JSONB`, default `[]`): Historial de trabajos.
-- `education` (`JSONB`, default `[]`): Educación académica.
-- `certifications` (`JSONB`, default `[]`): Certificaciones.
-- `location` (`VARCHAR(100)`, Nullable): Ubicación física.
-- `availability` (`VARCHAR(100)`, Nullable): Disponibilidad.
-- `is_diagnosed` (`BOOLEAN`, default `false`): Indica si tiene diagnóstico calculado.
-- `created_at`, `updated_at` (`TIMESTAMP WITH TIME ZONE`).
-
-### 3. Tabla `cv_documents`
-Registro histórico de cargas de archivos CV.
-- `id` (`UUID`, PK): Identificador del documento.
-- `user_id` (`UUID`, FK → `users.user_id`): Propietario del archivo.
-- `storage_path` (`VARCHAR(512)`): Ruta en Supabase Storage.
-- `original_filename` (`VARCHAR(255)`): Nombre original del archivo.
-- `content_type` (`VARCHAR(128)`): Tipo MIME (`application/pdf`, etc.).
-- `size_bytes` (`INTEGER`): Tamaño en bytes.
-- `status` (`VARCHAR(50)`, default `"processing"`): Estado del procesamiento (`processing`, `extracted`, `completed`, `error`).
-- `error_message` (`TEXT`, Nullable): Mensaje de error si el procesamiento falló.
-- `extracted_data` (`JSONB`, Nullable): Datos extraídos por el LLM (JSON estructurado).
-- `uploaded_at` (`TIMESTAMP WITH TIME ZONE`): Fecha de subida.
-
-### 4. Tabla `skills`
-Catálogo maestro normalizado de habilidades IT.
-- `skill_id` (`UUID`, PK): Identificador único.
-- `name` (`VARCHAR(500)`, Unique, Indexed): Nombre estandarizado.
-- `esco_uri` (`VARCHAR(255)`, Unique, Nullable): URI de ESCO (clasificación europea de habilidades).
-- `nature` (`VARCHAR(50)`, Nullable): Tipo (`concept`, `tech` o `soft`).
-- `domain_tags` (`JSONB`, default `[]`): Etiquetas semánticas (`["frontend", "web"]`).
-- `core_domains` (`JSONB`, default `[]`): Dominios principales.
-- `weight` (`NUMERIC(5,2)`, default `1.00`): Importancia global de la habilidad.
-- `embedding` (`VECTOR(1024)`, Nullable): Vector Voyage AI.
-- `created_at` (`TIMESTAMP WITH TIME ZONE`).
-
-### 5. Tabla `profile_skills`
-Relación entre un perfil y sus habilidades adquiridas, con métricas de competencia ICT.
-- `profile_skill_id` (`UUID`, PK).
-- `profile_id` (`UUID`, FK → `profiles.profile_id`).
-- `skill_id` (`UUID`, FK → `skills.skill_id`).
-- `self_taught` (`BOOLEAN`, default `false`): Aprendizaje autodidacta.
-- `personal_projects` (`BOOLEAN`, default `false`): Proyectos personales.
-- `years_of_experience` (`INTEGER`, default `0`): Años de experiencia con la skill.
-- `has_certification` (`BOOLEAN`, default `false`): Certificación formal.
-- `ict_score` (`NUMERIC(5,2)`, default `0.0`): Puntaje ICT calculado.
-
-### 6. Tabla `skill_aliases`
-Sinónimos hacia la taxonomía oficial (búsqueda O(1)).
-- `alias_id` (`UUID`, PK).
-- `alias_name` (`VARCHAR(500)`, Unique, Indexed): Variante ortográfica.
-- `skill_id` (`UUID`, FK → `skills.skill_id`): Habilidad canónica.
-
-### 7. Tabla `skill_relations`
-Grafo de conocimiento del mercado.
-- `relation_id` (`UUID`, PK).
-- `source_skill_id` (`UUID`, FK → `skills.skill_id`): Habilidad origen.
-- `target_skill_id` (`UUID`, FK → `skills.skill_id`): Habilidad destino.
-- `relation_type` (`VARCHAR(50)`): Tipo de arco (`belongs_to`, `requires`, `alternative_to`).
-
-### 8. Tabla `clusters`
-Especialidades tecnológicas del mercado identificadas por UMAP/HDBSCAN.
-- `cluster_id` (`UUID`, PK).
-- `name` (`VARCHAR(150)`): Nombre descriptivo.
-- `description` (`TEXT`, Nullable): Resumen del stack tecnológico.
-- `job_offer_count` (`INTEGER`, default `0`): Ofertas agrupadas en el clúster.
-- `centroid_vec` (`VECTOR(1024)`, Nullable): Vector centroide.
-- `compatible_roles` (`JSONB`, default `[]`): Puestos coincidentes con el stack.
-- `market_insights` (`JSONB`, default `{}`): Información salarial y demanda.
-- `created_at`, `updated_at`.
-
-### 9. Tabla `cluster_skills`
-Relación entre clúster y habilidades con peso de relevancia.
-- `cluster_skill_id` (`UUID`, PK).
-- `cluster_id` (`UUID`, FK → `clusters.cluster_id`).
-- `skill_id` (`UUID`, FK → `skills.skill_id`).
-- `importance_score` (`NUMERIC(5,2)`, Nullable): Peso de la habilidad en el clúster.
-
-### 10. Tabla `cluster_skill_trends`
-Tendencias temporales de habilidades dentro de los clústeres.
-- `trend_id` (`UUID`, PK).
-- `cluster_id` (`UUID`, FK → `clusters.cluster_id`).
-- `skill_id` (`UUID`, FK → `skills.skill_id`).
-- `recorded_at` (`TIMESTAMP WITH TIME ZONE`, Indexed): Momento de la medición.
-- `frequency` (`NUMERIC(5,2)`, default `0.0`): Frecuencia en el período.
-- `importance_score` (`NUMERIC(5,2)`, default `0.0`): Importancia en el período.
-
-### 11. Tabla `diagnostics`
-Historial de diagnósticos de alineación profesional.
-- `diagnostic_id` (`UUID`, PK).
-- `profile_id` (`UUID`, FK → `profiles.profile_id`).
-- `detected_cluster_id` (`UUID`, FK → `clusters.cluster_id`).
-- `affinity_score` (`NUMERIC(5,2)`): Coeficiente de alineación (0.0 a 1.0).
-- `created_at`.
-
-### 12. Tabla `diagnostic_skills`
-Habilidades analizadas en un diagnóstico y su clasificación de brecha.
-- `diagnostic_skill_id` (`UUID`, PK).
-- `diagnostic_id` (`UUID`, FK → `diagnostics.diagnostic_id`).
-- `skill_id` (`UUID`, FK → `skills.skill_id`).
-- `skill_status` (`VARCHAR(50)`): `consolidated`, `gap` o `emerging`.
-- `importance_score` (`NUMERIC(5,2)`, Nullable).
-
-### 13. Tabla `job_offers`
-Ofertas laborales scrapeadas del mercado.
-- `job_offer_id` (`UUID`, PK).
-- `cluster_id` (`UUID`, FK → `clusters.cluster_id`, Nullable): Clúster asignado.
-- `job_title` (`VARCHAR(150)`, Indexed): Título de la oferta.
-- `company` (`VARCHAR(150)`, Nullable): Empresa.
-- `location` (`VARCHAR(100)`, Nullable): Ubicación.
-- `modality` (`VARCHAR(50)`, Nullable): Remoto, Presencial, Híbrido.
-- `salary` (`VARCHAR(100)`, Nullable): Rango salarial.
-- `experience_years` (`VARCHAR(100)`, Nullable): Experiencia requerida.
-- `education_level` (`VARCHAR(100)`, Nullable): Nivel educativo.
-- `full_description` (`TEXT`, Nullable): Descripción completa.
-- `source_url` (`TEXT`, Unique): URL de la oferta.
-- `portal` (`VARCHAR(100)`, Nullable): Portal de origen.
-- `date_posted` (`VARCHAR(50)`, Nullable): Fecha de publicación.
-- `raw_hard_skills` (`JSONB`, Nullable): Habilidades técnicas crudas.
-- `raw_soft_skills` (`JSONB`, Nullable): Habilidades blandas crudas.
-- `is_normalized` (`BOOLEAN`, default `false`, Indexed): Si fue procesada por el normalizador.
-- `scraped_at`: Fecha de scraping.
-
-### 14. Tabla `offer_skills`
-Habilidades normalizadas asociadas a ofertas laborales.
-- `offer_skill_id` (`UUID`, PK).
-- `job_offer_id` (`UUID`, FK → `job_offers.job_offer_id`).
-- `skill_id` (`UUID`, FK → `skills.skill_id`).
-- `skill_type` (`VARCHAR(50)`): Tipo de habilidad.
-- `importance_score` (`NUMERIC(5,2)`, Nullable).
-
-### 15. Tabla `roadmaps` (DROPPED)
-La tabla `roadmaps` fue creada en la migración inicial y eliminada en la migración `6e185a40579f`. Ya no existe en el esquema.
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `user_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único del usuario (mapea a `auth.users.id`). |
+| `email` | VARCHAR(255) | UNIQUE, NOT NULL, INDEX | Correo electrónico principal. |
+| `full_name` | VARCHAR(255) | NULL | Nombre completo desnormalizado para acceso rápido. |
+| `avatar_url` | VARCHAR(512) | NULL | URL del avatar provisto por OAuth/perfil. |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de registro. |
 
 ---
 
-## MVP vs Alcance Futuro
+### 2. `cv_documents`
+Historial de documentos de currículum cargados y estado de extracción en segundo plano.
 
-### Implementado en el MVP
-- 15 tablas activas: usuarios, perfiles, CVs, skills, aliases, relaciones de grafo, clústeres, diagnostico, ofertas laborales y tendencias.
-- Métricas ICT (autodidacta, proyectos, experiencia, certificación) en `profile_skills`.
-- ESCO URI para estandarización europea de habilidades.
-- Seguimiento de estado de procesamiento de CVs.
-- Pipeline completo de scraping a clústeres.
-
-### Clasificado como Alcance Futuro (Post-MVP)
-- **Tabla `roadmaps`**: Planes de estudio interactivos generados por LLM.
-- **Tabla `roadmap_steps`**: Pasos de estudio con recursos externos y avance.
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único del documento CV. |
+| `user_id` | UUID | FK `users.user_id` ON DELETE CASCADE, NOT NULL, INDEX | Usuario propietario. |
+| `storage_path` | VARCHAR(512) | NOT NULL | Ruta del archivo en Supabase Storage bucket. |
+| `original_filename`| VARCHAR(255) | NOT NULL | Nombre original del archivo cargado. |
+| `content_type` | VARCHAR(128) | NOT NULL | Tipo MIME (`application/pdf`, `application/vnd.openxmlformats...`). |
+| `size_bytes` | INTEGER | NOT NULL | Tamaño del archivo en bytes (máximo 5MB). |
+| `status` | VARCHAR(50) | NOT NULL, DEFAULT 'processing' | Estado: `processing`, `skills_detected`, `completed`, `failed`. |
+| `error_message` | TEXT | NULL | Detalle de error en caso de fallo en extracción o finalización. |
+| `extracted_data` | JSONB | NULL | JSON estructurado extraído por LLM (skills, experiencia, etc.). |
+| `uploaded_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de carga. |
 
 ---
 
-## Referencias
+### 3. `profiles`
+Perfil profesional consolidado del desarrollador y vector semántico del CV.
 
-- [Arquitectura Técnica](ARCHITECTURE.md)
-- [Contratos de Interfaz](CONTRACTS.md)
-- [Lógica Core e Inferencia](MODEL.md)
-- [Roadmap de Producto](ROADMAP.md)
-- [Alcance MVP](SCOPE.md)
-- [Documento de Requerimientos de Producto (PRD)](PRD.md)
-- [Product Backlog](PRODUCT_BACKLOG.md)
-- [Sprint Backlog](SPRINT_BACKLOG.md)
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `profile_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único del perfil. |
+| `user_id` | UUID | FK `users.user_id` ON DELETE CASCADE, UNIQUE, NOT NULL, INDEX | Usuario asociado. |
+| `full_name` | VARCHAR(150) | NULL | Nombre del desarrollador. |
+| `current_job_role` | VARCHAR(100) | NULL | Cargo o rol actual reportado/extraído. |
+| `professional_summary` | TEXT | NULL | Resumen ejecutivo del perfil. |
+| `years_experience`| INTEGER | NULL | Años totales de experiencia laboral en tecnología. |
+| `preferred_modality`| VARCHAR(50) | NULL | Modalidad: `Remoto`, `Híbrido`, `Presencial`. |
+| `cv_url` | TEXT | NULL | URL pública o firmada del CV activo. |
+| `cv_raw_text` | TEXT | NULL | Texto plano extraído del CV. |
+| `cv_id` | UUID | NULL | Referencia al `cv_documents.id` activo. |
+| `cv_embedding` | VECTOR(1024) | NULL | Embedding semántico del CV generado con Voyage AI. |
+| `work_experience` | JSONB | NOT NULL, DEFAULT '[]' | Lista de empleos anteriores (empresa, rol, fechas, descripción). |
+| `education` | JSONB | NOT NULL, DEFAULT '[]' | Historial académico. |
+| `certifications` | JSONB | NOT NULL, DEFAULT '[]' | Certificaciones técnicas obtenidas. |
+| `location` | VARCHAR(100) | NULL | Ubicación geográfica (`Lima, Perú`, `Remoto LATAM`). |
+| `availability` | VARCHAR(100) | NULL | Disponibilidad laboral (`Inmediata`, `1 mes`). |
+| `is_diagnosed` | BOOLEAN | NOT NULL, DEFAULT FALSE | `TRUE` una vez completada la Fase 2 de diagnóstico. |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de creación del registro. |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Última modificación. |
+
+---
+
+### 4. `skills`
+Catálogo maestro de habilidades canónicas, gobernanza de taxonomía y embeddings.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `skill_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador canónico de la habilidad. |
+| `name` | VARCHAR(500) | UNIQUE, NOT NULL, INDEX | Nombre canónico estandarizado (ej. `FastAPI`, `PostgreSQL`). |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'canonical', INDEX, CHECK (`status IN ('canonical', 'pending_review', 'deprecated')`) | Estado de gobernanza. |
+| `nature` | VARCHAR(50) | NULL | Naturaleza: `concept`, `tech`, `soft`. |
+| `domain_tags` | JSONB | NOT NULL, DEFAULT '[]' | Etiquetas técnicas secundarias. |
+| `core_domains` | JSONB | NOT NULL, DEFAULT '[]' | Macro-dominios principales (ej. `["Backend", "Database"]`). |
+| `weight` | NUMERIC(5,2) | NOT NULL, DEFAULT 1.0 | Peso base de importancia de la habilidad. |
+| `embedding` | VECTOR(1024) | NULL | Vector de Voyage AI (`voyage-4-lite`) para homologación semántica. |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de creación. |
+
+---
+
+### 5. `skill_standards`
+Mapeo de habilidades conceptuales a estándares internacionales abiertos (Lightcast Open Skills, SFIA 9, SWECOM).
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único del registro de estándar. |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad canónica mapeada. |
+| `standard_name` | VARCHAR(50) | NOT NULL | Nombre del estándar: `Lightcast`, `SFIA`, `SWECOM`. |
+| `standard_uri` | VARCHAR(512) | UNIQUE, NOT NULL, INDEX | URI o identificador global del concepto en el estándar. |
+| `standard_code` | VARCHAR(50) | NULL | Código formal del estándar (ej. código SFIA o ID Lightcast). |
+| `standard_type` | VARCHAR(100) | NULL, INDEX | Tipo en el estándar: `Specialized Skill`, `Common Skill`, `Certification`. |
+| `category_name` | VARCHAR(150) | NULL, INDEX | Categoría jerárquica superior (ej. `Information Technology`). |
+| `subcategory_name`| VARCHAR(150) | NULL, INDEX | Subcategoría específica (ej. `Software Development`). |
+
+---
+
+### 6. `skill_aliases`
+Tabla de sinónimos y variantes ortográficas para resolución exacta $O(1)$.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `alias_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único del alias. |
+| `alias_name` | VARCHAR(500) | UNIQUE, NOT NULL, INDEX | Texto del alias (ej. `reactjs`, `react.js`, `fast-api`). |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad canónica a la que resuelve. |
+
+---
+
+### 7. `skill_relations`
+Aristas del grafo de conocimiento para inferencia jerárquica y dependencias técnicas.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `relation_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único de la arista. |
+| `source_skill_id`| UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Nodo origen de la relación. |
+| `target_skill_id`| UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Nodo destino de la relación. |
+| `relation_type` | VARCHAR(50) | NOT NULL | Tipo de arista: `belongs_to`, `requires`, `alternative_to`. |
+
+---
+
+### 8. `profile_skills`
+Persistencia de las habilidades demostradas o agregadas por el desarrollador con evidencia e ICT Score.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `profile_skill_id`| UUID | PK, DEFAULT uuid_generate_v4() | Identificador de la habilidad del usuario. |
+| `profile_id` | UUID | FK `profiles.profile_id` ON DELETE CASCADE, NOT NULL, INDEX | Perfil del desarrollador. |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad canónica asociada. |
+| `self_taught` | BOOLEAN | NOT NULL, DEFAULT FALSE | Evidencia de aprendizaje autodidacta (+1 pt ICT). |
+| `personal_projects`| BOOLEAN | NOT NULL, DEFAULT FALSE | Evidencia en proyectos personales (+2 pts ICT). |
+| `years_of_experience`| INTEGER | NOT NULL, DEFAULT 0 | Años de experiencia aplicándola (+3 pts/año ICT). |
+| `has_certification`| BOOLEAN | NOT NULL, DEFAULT FALSE | Certificación oficial en la habilidad (+4 pts ICT). |
+| `ict_score` | NUMERIC(5,2) | NOT NULL, DEFAULT 0.0 | Índice de competencia técnica calculado (0.0 a 10.0). |
+
+---
+
+### 9. `clusters`
+Especialidades y macro-perfiles descubiertos mediante clustering no supervisado en `devalign-ml`.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `cluster_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único de la especialidad. |
+| `name` | VARCHAR(150) | NOT NULL | Nombre generado por LLM (ej. `Cloud Backend Python`). |
+| `description` | TEXT | NULL | Resumen de tecnologías dominantes y volumen de ofertas. |
+| `job_offer_count`| INTEGER | NOT NULL, DEFAULT 0 | Total de ofertas clasificadas dentro del clúster. |
+| `centroid_vec` | VECTOR(1024) | NULL | Centroide vectorial promedio de las ofertas del clúster. |
+| `compatible_roles`| JSONB | NOT NULL, DEFAULT '[]' | Top roles compatibles con nivel de coincidencia. |
+| `market_insights` | JSONB | NOT NULL, DEFAULT '{}' | Métricas de crecimiento, demanda y participación de mercado. |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de generación del clúster. |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Última actualización. |
+
+---
+
+### 10. `cluster_skills`
+Habilidades representativas de cada clúster tecnológico y su peso de importancia.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `cluster_skill_id`| UUID | PK, DEFAULT uuid_generate_v4() | Identificador de la relación. |
+| `cluster_id` | UUID | FK `clusters.cluster_id` ON DELETE CASCADE, NOT NULL, INDEX | Clúster asociado. |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad perteneciente al clúster. |
+| `importance_score`| NUMERIC(5,2) | NULL | Importancia relativa calculada ($Frecuencia \times Peso$). |
+
+---
+
+### 11. `cluster_skill_trends`
+Histórico de frecuencia e importancia de habilidades para análisis de tendencias temporales.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `trend_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador de la medición. |
+| `cluster_id` | UUID | FK `clusters.cluster_id` ON DELETE CASCADE, NOT NULL, INDEX | Clúster medido. |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad medida. |
+| `recorded_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW(), INDEX | Fecha del registro temporal. |
+| `frequency` | NUMERIC(5,2) | NOT NULL, DEFAULT 0.0 | Frecuencia de aparición (0.0 a 1.0). |
+| `importance_score`| NUMERIC(5,2) | NOT NULL, DEFAULT 0.0 | Puntaje de importancia en la fecha. |
+
+---
+
+### 12. `diagnostics`
+Resultados de la evaluación de afinidad del desarrollador contra los clústeres del mercado.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `diagnostic_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único del diagnóstico. |
+| `profile_id` | UUID | FK `profiles.profile_id` ON DELETE CASCADE, NOT NULL, INDEX | Perfil del usuario evaluado. |
+| `detected_cluster_id`| UUID | FK `clusters.cluster_id` ON DELETE RESTRICT, NOT NULL, INDEX | Clúster evaluado. |
+| `affinity_score` | NUMERIC(5,2) | NOT NULL | Coeficiente Weighted Jaccard obtenido (0.0 a 1.0). |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de evaluación. |
+
+---
+
+### 13. `diagnostic_skills`
+Detalle de habilidades consolidadas y brechas asociadas a un diagnóstico específico.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `diagnostic_skill_id`| UUID | PK, DEFAULT uuid_generate_v4() | Identificador del ítem del diagnóstico. |
+| `diagnostic_id` | UUID | FK `diagnostics.diagnostic_id` ON DELETE CASCADE, NOT NULL, INDEX | Diagnóstico asociado. |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad evaluada. |
+| `skill_status` | VARCHAR(50) | NOT NULL | Estado en el diagnóstico: `consolidated`, `gap`, `emerging`. |
+| `importance_score`| NUMERIC(5,2) | NULL | Peso de importancia de la habilidad en el clúster. |
+
+---
+
+### 14. `job_offers`
+Ofertas de empleo IT extraídas por `devalign-scraping` con datos estructurados de mercado.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `job_offer_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador de la vacante. |
+| `cluster_id` | UUID | FK `clusters.cluster_id` ON DELETE SET NULL, NULL, INDEX | Clúster asignado tras el pipeline de ML. |
+| `job_title` | VARCHAR(150) | NOT NULL, INDEX | Título de la oferta laboral. |
+| `company` | VARCHAR(150) | NULL | Nombre de la empresa ofertante. |
+| `location` | VARCHAR(100) | NULL | Ubicación reportada (ej. `Lima, Perú`, `Bogotá, Colombia`). |
+| `modality` | VARCHAR(50) | NULL | Modalidad laboral (`Remoto`, `Híbrido`, `Presencial`). |
+| `salary` | VARCHAR(100) | NULL | Texto original del salario reportado en el portal. |
+| `min_salary_usd` | NUMERIC(10,2) | NULL, INDEX | Salario mínimo estructurado en USD. |
+| `max_salary_usd` | NUMERIC(10,2) | NULL | Salario máximo estructurado en USD. |
+| `currency` | VARCHAR(10) | NULL | Moneda de origen (`PEN`, `USD`, `COP`, `CLP`, `MXN`). |
+| `is_salary_negotiable`| BOOLEAN | NOT NULL, DEFAULT FALSE | Indica si la oferta marca salario a convenir. |
+| `experience_years`| VARCHAR(100) | NULL | Texto original de requisitos de experiencia. |
+| `min_experience_years`| INTEGER | NULL, INDEX | Años mínimos de experiencia requeridos. |
+| `max_experience_years`| INTEGER | NULL | Años máximos de experiencia requeridos. |
+| `education_level` | VARCHAR(100) | NULL | Nivel de educación requerido. |
+| `full_description`| TEXT | NULL | Descripción completa limpia de la vacante. |
+| `source_url` | TEXT | UNIQUE, NOT NULL | URL original única para control de idempotencia y upsert. |
+| `portal` | VARCHAR(100) | NULL | Portal de origen (`computrabajo`, `getonboard`, etc.). |
+| `country` | VARCHAR(10) | NULL, INDEX | Código de país ISO (`PE`, `CO`, `CL`, `MX`, `AR`). |
+| `date_posted` | VARCHAR(50) | NULL | Fecha de publicación en texto original. |
+| `published_at` | TIMESTAMPTZ | NULL, INDEX | Fecha de publicación estructurada. |
+| `raw_hard_skills` | JSONB | NULL | Lista cruda de habilidades técnicas extraídas por scraping. |
+| `raw_soft_skills` | JSONB | NULL | Lista cruda de habilidades blandas extraídas por scraping. |
+| `is_normalized` | BOOLEAN | NOT NULL, DEFAULT FALSE, INDEX | Indica si las habilidades crudas fueron normalizadas. |
+| `ai_enriched` | BOOLEAN | NOT NULL, DEFAULT FALSE, INDEX | Indica si la oferta fue procesada por enriquecimiento LLM. |
+| `scraped_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de extracción en el scraper. |
+
+---
+
+### 15. `offer_skills`
+Tabla de unión que vincula ofertas laborales con habilidades canónicas normalizadas.
+
+| Campo | Tipo | Constraints | Descripción |
+|---|---|---|---|
+| `offer_skill_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador de la unión. |
+| `job_offer_id` | UUID | FK `job_offers.job_offer_id` ON DELETE CASCADE, NOT NULL, INDEX | Oferta asociada. |
+| `skill_id` | UUID | FK `skills.skill_id` ON DELETE CASCADE, NOT NULL, INDEX | Habilidad canónica normalizada. |
+| `skill_type` | VARCHAR(50) | NOT NULL | Tipo: `hard_skill`, `soft_skill`, `methodology`, `tool`. |
+| `importance_score`| NUMERIC(5,2) | NULL | Relevancia en la oferta laboral. |
+
+---
+
+## Migraciones Alembic del Sistema (23 Migraciones)
+
+| Orden | Revisión | Nombre de Migración | Impacto en Esquema |
+|---|---|---|---|
+| 1 | `001` | `create_all_tables` | Creación inicial de las 13 tablas base del sistema. |
+| 2 | `002` | `add_is_normalized_to_job_offers` | Agrega flag `is_normalized` en `job_offers`. |
+| 3 | `0e407f4cfc27` | `user_sync_and_rls` | Sincronización JIT con `auth.users` y políticas de RLS. |
+| 4 | `3e85e88d6528` | `alter_vector_dimensions` | Ajuste de dimensiones pgvector a 1024 (Voyage AI). |
+| 5 | `af8815637327` | `add_cv_id_to_profiles` | Agrega FK referencial `cv_id` en `profiles`. |
+| 6 | `6d3f97e10a1d` | `add_status_to_cv_documents` | Columna `status` en `cv_documents`. |
+| 7 | `fcdbbaaaa6c7` | `add_extracted_data_to_cv_documents` | JSONB `extracted_data` en `cv_documents`. |
+| 8 | `a1b2c3d4e5f6` | `add_is_diagnosed_to_profiles` | Flag `is_diagnosed` en `profiles`. |
+| 9 | `c412290f9981` | `extend_profiles_table` | Agrega campos de perfil: ubicación, disponibilidad, resúmenes. |
+| 10 | `91474942c0b8` | `knowledge_graph_skills` | Creación de aristas en `skill_relations`. |
+| 11 | `6e185a40579f` | `add_embedding_to_skills` | Vector 1024d en la tabla `skills`. |
+| 12 | `6f7738c1f473` | `add_skill_weight_and_cluster_offer_count` | Peso en `skills` y conteo en `clusters`. |
+| 13 | `6e80d94abe6a` | `add_domain_and_cluster_insights` | Campos de dominio e insights JSONB en `clusters`. |
+| 14 | `75e453970cbd` | `increase_skill_name_length` | Extiende longitud de `skills.name` a VARCHAR(500). |
+| 15 | `cd103c833107` | `increase_alias_name_length` | Extiende `skill_aliases.alias_name` a VARCHAR(500). |
+| 16 | `42d733c42950` | `add_esco_and_ict_evidence_fields` | Evidencias e ICT score en `profile_skills`. |
+| 17 | `9354eebfaceb` | `create_profile_skills_table` | Tabla formal `profile_skills`. |
+| 18 | `55774ba07a3f` | `remove_esco_uri_and_add_skill_standards` | Elimina `esco_uri` de `skills` y crea `skill_standards`. |
+| 19 | `55d42b6b1ed3` | `add_skill_status_and_custom_standards` | Columna `status` en `skills` (`canonical`, etc.). |
+| 20 | `dbd782abdd17` | `add_core_domains_to_skills` | Campos `core_domains` y `domain_tags` en `skills`. |
+| 21 | `1cd3761eb205` | `add_ai_enriched_to_job_offers` | Flag `ai_enriched` en `job_offers`. |
+| 22 | `29c892425359` | `add_country_to_job_offers` | Campo `country` en `job_offers`. |
+| 23 | `8a7b6c5d4e3f` | `add_structured_market_fields_to_job_offers` | Campos salariales y de experiencia en USD en `job_offers`. |
+
+---
+
+## 🔗 Referencias
+
+- [🏗️ Arquitectura Técnica](ARCHITECTURE.md)
+- [🤝 Contratos de Interfaz](CONTRACTS.md)
+- [🧠 Lógica Core e Inferencia](MODEL.md)
+- [🗺️ Roadmap de Producto](ROADMAP.md)
+- [🎯 Alcance MVP](SCOPE.md)
+- [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
+- [📋 Product Backlog](PRODUCT_BACKLOG.md)
+- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

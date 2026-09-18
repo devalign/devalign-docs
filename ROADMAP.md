@@ -1,6 +1,6 @@
 # 🗺️ Roadmap de Producto
 
-Este documento describe la estrategia de lanzamiento y evolución del producto Devalign, organizada en fases incrementales de entrega de valor para los usuarios y la organización.
+Este documento describe la estrategia de lanzamiento, evolución técnica y fases del producto Devalign, organizadas en entregas progresivas de valor.
 
 ---
 
@@ -8,64 +8,70 @@ Este documento describe la estrategia de lanzamiento y evolución del producto D
 
 ```mermaid
 gantt
-    title Plan de Lanzamiento Devalign
+    title Plan de Lanzamiento y Evolución de Devalign
     dateFormat  YYYY-MM
     section MVP
-    Fase 1 - Ingeniería y Diagnóstico Core :active, 2026-06, 2026-08
+    Fase 1 - Ingeniería y Diagnóstico Core (Consolidada) :done, 2026-06, 2026-09
     section Beta
-    Fase 2 - Beta Privada e Iteración UX   : 2026-09, 2026-11
+    Fase 2 - Beta Privada, Telemetría y Optimización UX   :active, 2026-09, 2026-11
     section Retención
-    Fase 3 - Plan de Estudio Inteligente   : 2026-12, 2027-02
+    Fase 3 - Plan de Estudio Inteligente y Recursos       : 2026-12, 2027-02
     section Escala
-    Fase 4 - Reclutamiento B2B             : 2027-03, 2027-06
+    Fase 4 - Plataforma B2B y Conectores ATS              : 2027-03, 2027-06
 ```
 
 ---
 
 ## 🚀 Detalle de Fases de Producto
 
-### 📍 Fase 1: MVP (Ingeniería y Diagnóstico Core)
-* **Objetivo:** Construir la base de datos relacional de habilidades de mercado, habilitar el perfilamiento inteligente automatizado y permitir la personalización interactiva inicial del perfil del desarrollador.
-* **Características Clave:**
-  - Carga manual de CV en formato PDF/DOCX con análisis y extracción asíncrona en segundo plano (polling).
-  - Normalización híbrida de habilidades (exact match + embeddings Voyage AI `voyage-4-lite` $\ge 0.88$).
-  - Inferencia ascendente de habilidades mediante grafo de conocimiento (arcos `BELONGS_TO` / `REQUIRES`) con trazabilidad (`inferred_from`).
-  - Algoritmo de alineación por Jaccard Ponderado modificado por frecuencia y dominio.
-  - Dashboard de diagnóstico Bento-Grid responsivo (fortalezas, brechas priorizadas `critical`/`high`/`medium` y afinidades secundarias).
-  - Edición en caliente del perfil y de las habilidades del catálogo con recálculo dinámico instantáneo.
-  - Historial, descarga, eliminación y re-análisis de documentos CV.
-  - Mapa interactivo de grafo de habilidades en 2D/3D (`react-force-graph`).
-  - Evaluación voluntaria contra clústeres/especialidades específicas del mercado.
-  - Limpieza de modelos legacy (K-Modes descartado; UMAP + HDBSCAN en lote offline).
-* **Infraestructura:** API FastAPI en Railway/Koyeb, frontend Next.js 16 en Vercel, PostgreSQL con extensión `pgvector` en Supabase.
-* **Criterio de Salida:** Procesamiento exitoso de currículos con una tasa de normalización correcta de habilidades técnica superior al 85% y recálculo de perfil en menos de 2 segundos tras cambios manuales.
+### 📍 Fase 1: MVP (Ingeniería y Diagnóstico Core) — *Consolidada*
+* **Objetivo:** Construir la infraestructura relacional de habilidades, el pipeline de clustering de mercado LATAM, la extracción en dos fases de currículums y el panel de diagnóstico interactivo.
+* **Características Entregadas:**
+  - Carga asíncrona de CV (PDF/DOCX) en 2 fases: Extracción estructurada (`skills_detected`) y Puerta de validación humana antes del diagnóstico (`completed`).
+  - Catálogo de gobernanza de habilidades con taxonomía estándar basada en **Lightcast Open Skills**, SFIA 9 y SWECOM.
+  - Normalización híbrida: Coincidencia exacta $O(1)$ en aliases $\to$ Embeddings Voyage AI (`voyage-4-lite`, 1024d, $\ge 0.88$) $\to$ Fallback LLM estructurado.
+  - Inferencia ascendente en grafo de conocimiento (`BELONGS_TO` / `REQUIRES`) con trazabilidad (`inferred_from`).
+  - Algoritmo de alineación por **Weighted Jaccard** con 30% de crédito parcial por coincidencia de macro-dominios.
+  - Cálculo de Índice de Competencia Técnica (**ICT Score** 0-10) y derivación dinámica de senioridad.
+  - Dashboard Bento-Grid con radar de afinidad, desglose de brechas priorizadas (`critical`, `high`, `medium`) y topología interactiva de grafo en 2D/3D.
+  - Autocompletado de habilidades con clasificación de estándares en tiempo real (`SkillAutocomplete`).
+  - Scraping multi-portal LATAM (Computrabajo en 5 países, GetOnBoard, Remotive, WeWorkRemotely, Arbeitnow) con persistencia directa en Supabase.
+  - Pipeline de clustering UMAP + HDBSCAN con Smooth IDF, preservación de outliers y nombrado LLM con validación Pydantic.
+  - 15 tablas relacionales y 23 migraciones Alembic gestionadas en `devalign-api`.
+* **Criterio de Salida:** Procesamiento exitoso de currículos con una tasa de normalización correcta superior al 85% y recálculo dinámico en menos de 2 segundos.
 
-### 📍 Fase 2: Beta (Beta Privada y Pública)
-* **Objetivo:** Lanzar una versión controlada del producto a usuarios reales para recolectar feedback de usabilidad de la interfaz, registrar telemetría y validar la precisión percibida del diagnóstico técnico.
-* **Características Clave:**
-  - Registro abierto para grupo de prueba cerrado (Beta Privada).
-  - Ajustes de UX de precisión basados en el feedback en dispositivos móviles y de escritorio.
-  - Integración de herramientas de telemetría y análisis de uso para rastrear flujos de clics y tiempos de permanencia en las habilidades de brecha.
-  - Auditoría de taxonomía de habilidades por expertos del sector (cotejo con estándares de reclutadores locales).
-* **Criterio de Salida:** Corrección de incidencias de usabilidad críticas y obtención de una tasa de concordancia subjetiva superior al 90% por parte de los profesionales evaluados en la Beta.
+---
 
-### 📍 Fase 3: Retención (Recomendaciones y Plan de Estudio)
-* **Objetivo:** Incrementar la recurrencia y retención de los desarrolladores en la plataforma guiando activamente el cierre de sus brechas técnicas.
+### 📍 Fase 2: Beta (Beta Privada y Pública) — *En Ejecución*
+* **Objetivo:** Desplegar una versión controlada a grupos cerrados de desarrolladores para validar la precisión del diagnóstico percibido, monitorear la usabilidad de la UI y recopilar retroalimentación cualitativa.
 * **Características Clave:**
-  - Generación de planes de estudio interactivos asíncronos apoyados en LLM para cada brecha técnica de alta prioridad.
-  - Integración de catálogo de recursos de aprendizaje externos sugeridos (Udemy, Coursera, YouTube, documentación técnica oficial).
-  - Guardado de avances de estudio y marcado de completitud paso a paso con persistencia en DB (`roadmaps` y `roadmap_steps`).
-  - Alertas semanales opcionales sobre nuevas vacantes añadidas al clúster de especialidad objetivo del usuario.
-* **Criterio de Salida:** Ratio de retención semanal (WAU/MAU) superior al 25% tras el lanzamiento del módulo de estudio interactivo.
+  - Apertura de registro para comunidad de desarrolladores en lista de espera (Beta Privada).
+  - Telemetría de interacción para registrar patrones de navegación y tiempos de visualización en brechas de habilidades.
+  - Refinamiento de componentes visuales en dispositivos móviles y monitores ultra-wide.
+  - Auditoría de la ontología de habilidades con líderes técnicos y reclutadores de la industria en LATAM.
+* **Criterio de Salida:** Corrección de incidencias críticas de usabilidad y obtención de una tasa de satisfacción superior al 90% en la precisión del diagnóstico emitido.
 
-### 📍 Fase 4: Escala (Reclutamiento B2B e Integraciones)
-* **Objetivo:** Monetizar la plataforma permitiendo a empresas del sector IT encontrar programadores con las habilidades y stacks exactos demandados, automatizando los pipelines de scraping.
+---
+
+### 📍 Fase 3: Retención (Plan de Estudio Inteligente y Recursos)
+* **Objetivo:** Guiar activamente al desarrollador en el cierre de sus brechas técnicas para aumentar el uso recurrente de la plataforma.
 * **Características Clave:**
-  - Dashboard B2B para reclutadores, con filtros avanzados de búsqueda relacional semántica de candidatos.
-  - Orquestación automática en la nube del scraper de Computrabajo para sincronización periódica de vacantes reales en tiempo real.
-  - Generador automático de ofertas de empleo con IA optimizado semánticamente para encajar con los clústeres.
-  - Conexión vía API / Webhooks con sistemas ATS (Applicant Tracking Systems) corporativos.
-* **Criterio de Salida:** Procesamiento y visualización de búsquedas de candidatos en menos de 500ms y primer cliente piloto corporativo conectado.
+  - Generación de planes de estudio asíncronos apoyados en LLM para cada brecha técnica de alta prioridad.
+  - Vinculación con recursos de aprendizaje externos (documentación oficial, cursos abiertos, repositorios de práctica).
+  - Persistencia de hitos de aprendizaje y marcado de avance paso a paso (`roadmaps` y `roadmap_steps`).
+  - Notificaciones periódicas sobre la evolución de la demanda laboral en las especialidades del usuario.
+* **Criterio de Salida:** Tasa de retención de usuarios activos semanales (WAU/MAU) superior al 25%.
+
+---
+
+### 📍 Fase 4: Escala (Plataforma B2B e Integraciones ATS)
+* **Objetivo:** Conectar el talento evaluado con empresas contratantes que buscan perfiles alineados a sus stacks tecnológicos específicos.
+* **Características Clave:**
+  - Panel B2B para reclutadores técnicos con búsqueda relacional y filtros semánticos basados en el grafo de habilidades.
+  - Automatización programada de scraping y re-entrenamiento periódico del modelo de clustering en la nube.
+  - Integración mediante webhooks y API con sistemas ATS (Applicant Tracking Systems) corporativos.
+  - Generador semántico de ofertas laborales para optimizar los requisitos de vacantes corporativas.
+* **Criterio de Salida:** Tiempo de búsqueda de candidatos inferior a 500ms y primer acuerdo piloto con empresas contratantes.
 
 ---
 
