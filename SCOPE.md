@@ -22,7 +22,7 @@ Este documento delimita formalmente el alcance del Producto Mínimo Viable (MVP)
 | **Edición Manual de Perfil y Skills** | **Sí** | MVP | Frontend / Backend | Endpoint `PUT /api/v1/me/skills` y `PATCH /api/v1/me` con recálculo dinámico en caliente. |
 | **Autocompletado de Habilidades** | **Sí** | MVP | Frontend / Backend | Búsqueda rápida con ranking de coincidencia y despliegue de categorías de estándares (`SkillAutocomplete`). |
 | **Topología Relacional de Mercado** | **Sí** | MVP | Frontend Web | Renderizado del grafo de habilidades en 2D/3D con `react-force-graph` y filtrado por clúster. |
-| **Scraping Multi-Portal LATAM** | **Sí** | MVP | Scraping | Extracción multi-país en Computrabajo (PE, CO, CL, MX, AR), GetOnBoard, Remotive, WWR y Arbeitnow. |
+| **Scraping Multi-Portal LATAM** | **Sí** | MVP | Scraping | Extracción multi-país en Computrabajo (PE, CO, CL, MX, AR), GetOnBoard, Remotive, WWR y Arbeitnow con segregación Browser/Http y batching resiliente. |
 | **Pipeline de Clustering Offline** | **Sí** | MVP | ML Engine | UMAP + HDBSCAN con Smooth IDF, preservación de outliers y nombrado LLM con validación Pydantic. |
 | **Roadmaps de Estudio Paso a Paso** | **No** | Post-MVP | Backend / Frontend | Generación interactiva de planes de estudio detallados por tema (previsto para Fase 3). |
 | **Seguimiento y Registro de Aprendizaje** | **No** | Post-MVP | Fullstack | Marcado paso a paso de cursos completados en base de datos. |
@@ -44,7 +44,7 @@ Este documento delimita formalmente el alcance del Producto Mínimo Viable (MVP)
 
 Para considerar una funcionalidad finalizada dentro del MVP, debe cumplir con la totalidad de los siguientes criterios:
 
-- [ ] **Cobertura de Pruebas Unitarias:** Cobertura de código $\ge 80\%$ comprobada mediante `pytest` en `devalign-api` y `devalign-scraping`.
+- [x] **Cobertura de Pruebas Unitarias:** Cobertura de código $\ge 80\%$ comprobada mediante `pytest` en `devalign-api` y `devalign-scraping` (97 tests unitarios y de integración aprobados).
 - [ ] **Estricto Control de Tipos:** TypeScript estricto en `devalign-web` sin uso de `any` no justificado; Pydantic v2 y validadores estrictos en `devalign-api`.
 - [ ] **Calidad de Código y Linting:** Aprobación sin advertencias de `ruff check` y `ruff format` en backend; `pnpm lint` en frontend.
 - [ ] **Integridad de Esquema:** Toda modificación relacional debe estar respaldada por una migración formal de Alembic en `alembic/versions/`.
@@ -60,5 +60,3 @@ Para considerar una funcionalidad finalizada dentro del MVP, debe cumplir con la
 - [🧠 Lógica Core e Inferencia](MODEL.md)
 - [🗺️ Roadmap de Producto](ROADMAP.md)
 - [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
-- [📋 Product Backlog](PRODUCT_BACKLOG.md)
-- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

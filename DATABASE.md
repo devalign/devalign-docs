@@ -403,7 +403,7 @@ Ofertas de empleo IT extraídas por `devalign-scraping` con datos estructurados 
 | `salary` | VARCHAR(100) | NULL | Texto original del salario reportado en el portal. |
 | `min_salary_usd` | NUMERIC(10,2) | NULL, INDEX | Salario mínimo estructurado en USD. |
 | `max_salary_usd` | NUMERIC(10,2) | NULL | Salario máximo estructurado en USD. |
-| `currency` | VARCHAR(10) | NULL | Moneda de origen (`PEN`, `USD`, `COP`, `CLP`, `MXN`). |
+| `currency` | VARCHAR(10) | NULL | Moneda de origen (`PEN`, `USD`, `COP`, `CLP`, `MXN`, `ARS`). |
 | `is_salary_negotiable`| BOOLEAN | NOT NULL, DEFAULT FALSE | Indica si la oferta marca salario a convenir. |
 | `experience_years`| VARCHAR(100) | NULL | Texto original de requisitos de experiencia. |
 | `min_experience_years`| INTEGER | NULL, INDEX | Años mínimos de experiencia requeridos. |
@@ -415,8 +415,8 @@ Ofertas de empleo IT extraídas por `devalign-scraping` con datos estructurados 
 | `country` | VARCHAR(10) | NULL, INDEX | Código de país ISO (`PE`, `CO`, `CL`, `MX`, `AR`). |
 | `date_posted` | VARCHAR(50) | NULL | Fecha de publicación en texto original. |
 | `published_at` | TIMESTAMPTZ | NULL, INDEX | Fecha de publicación estructurada. |
-| `raw_hard_skills` | JSONB | NULL | Lista cruda de habilidades técnicas extraídas por scraping. |
-| `raw_soft_skills` | JSONB | NULL | Lista cruda de habilidades blandas extraídas por scraping. |
+| `raw_hard_skills` | JSONB | NULL | Lista de habilidades técnicas extraídas por scraping y estandarizadas vía `SkillTaxonomyService`. |
+| `raw_soft_skills` | JSONB | NULL | Lista de habilidades blandas extraídas por scraping y estandarizadas vía `SkillTaxonomyService`. |
 | `is_normalized` | BOOLEAN | NOT NULL, DEFAULT FALSE, INDEX | Indica si las habilidades crudas fueron normalizadas. |
 | `ai_enriched` | BOOLEAN | NOT NULL, DEFAULT FALSE, INDEX | Indica si la oferta fue procesada por enriquecimiento LLM. |
 | `scraped_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha de extracción en el scraper. |
@@ -474,5 +474,3 @@ Tabla de unión que vincula ofertas laborales con habilidades canónicas normali
 - [🗺️ Roadmap de Producto](ROADMAP.md)
 - [🎯 Alcance MVP](SCOPE.md)
 - [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
-- [📋 Product Backlog](PRODUCT_BACKLOG.md)
-- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

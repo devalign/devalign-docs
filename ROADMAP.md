@@ -35,7 +35,7 @@ gantt
   - Cálculo de Índice de Competencia Técnica (**ICT Score** 0-10) y derivación dinámica de senioridad.
   - Dashboard Bento-Grid con radar de afinidad, desglose de brechas priorizadas (`critical`, `high`, `medium`) y topología interactiva de grafo en 2D/3D.
   - Autocompletado de habilidades con clasificación de estándares en tiempo real (`SkillAutocomplete`).
-  - Scraping multi-portal LATAM (Computrabajo en 5 países, GetOnBoard, Remotive, WeWorkRemotely, Arbeitnow) con persistencia directa en Supabase.
+  - Scraping multi-portal LATAM (Computrabajo en 5 países, GetOnBoard, Remotive, WeWorkRemotely, Arbeitnow) con segregación Browser/HttpParser, taxonomía sincronizada con Supabase (TTL 7d) y persistencia batch en bloques de 100.
   - Pipeline de clustering UMAP + HDBSCAN con Smooth IDF, preservación de outliers y nombrado LLM con validación Pydantic.
   - 15 tablas relacionales y 23 migraciones Alembic gestionadas en `devalign-api`.
 * **Criterio de Salida:** Procesamiento exitoso de currículos con una tasa de normalización correcta superior al 85% y recálculo dinámico en menos de 2 segundos.
@@ -83,5 +83,3 @@ gantt
 - [🧠 Lógica Core e Inferencia](MODEL.md)
 - [🎯 Alcance MVP](SCOPE.md)
 - [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
-- [📋 Product Backlog](PRODUCT_BACKLOG.md)
-- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

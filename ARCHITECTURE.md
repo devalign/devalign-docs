@@ -125,12 +125,13 @@ sequenceDiagram
 ```mermaid
 graph TD
     subgraph Scraping ["devalign-scraping (Multi-Portal LATAM)"]
-        CT[Computrabajo: PE, CO, CL, MX, AR<br>Playwright + BS4 + JSON-LD] --> Cleaner[Text Cleaner & Deduplication]
-        GOB[GetOnBoard API REST] --> Cleaner
-        REM[Remotive / WWR / Arbeitnow] --> Cleaner
+        CT[Computrabajo: PE, CO, CL, MX, AR<br>BrowserParser: Playwright Lazy + BS4 + JSON-LD] --> Cleaner[Text Cleaner & Deduplication]
+        GOB[GetOnBoard: API REST<br>HttpParser: Session + Retries] --> Cleaner
+        REM[Remotive / WWR / Arbeitnow<br>HttpParser: Session + Retries] --> Cleaner
         Cleaner --> ITFilter[Filtro IT Robusto de 2 Capas]
-        ITFilter --> Struct[Extractor Estructurado: Salario, Experiencia, País]
-        Struct --> Exporter[(DB: job_offers - Supabase Upsert)]
+        ITFilter --> Struct[Extractor Estructurado: Salarios LATAM USD, Exp, País]
+        Taxonomy[SkillTaxonomyService<br>Sync Supabase DB + Caché TTL 7d + Fallback JSON] --> Struct
+        Struct --> Exporter[(DB: job_offers - Supabase Batch Upsert 100)]
     end
 
     subgraph Clustering ["devalign-ml (Clustering & Enriquecimiento)"]
@@ -154,7 +155,7 @@ graph TD
 | **API Backend** | `devalign-api` | Python 3.12+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2, structlog | Capa de negocio central, endpoints REST, orquestación de LLMs, normalización semántica, inferencia de grafo, cálculo de Weighted Jaccard e ICT Score. |
 | **Frontend Web** | `devalign-web` | Next.js 16 (App Router), React 19, Tailwind CSS v4, TypeScript, shadcn/ui, TanStack Query, Zustand, react-force-graph | Interfaz de usuario responsiva en español, visualización de diagnósticos Bento-Grid, radar de afinidades, autocompletado de habilidades y topología de mercado. |
 | **Machine Learning** | `devalign-ml` | Python 3.12+, UMAP, HDBSCAN, scikit-learn, Voyage AI SDK, Groq/OpenAI, Pydantic | Pipeline no supervisado offline para reducción dimensional, agrupación de ofertas laborales, cálculo de centroides vectoriales 1024d y etiquetado de clústeres. |
-| **Web Scraping** | `devalign-scraping` | Python 3.12+, Playwright, BeautifulSoup4, JSON-LD Parser, httpx | Extracción masiva de ofertas laborales IT en LATAM con control de concurrencia, filtros de relevancia tecnológica y exportación directa a Supabase. |
+| **Web Scraping** | `devalign-scraping` | Python 3.12+, Playwright, BeautifulSoup4, JSON-LD Parser, requests | Extracción masiva con segregación de parsers (`BrowserParser` y `HttpParser`), inicialización perezosa de navegador (`nullcontext`), extracción taxonómica sincronizada con Supabase (caché TTL 7 días) y exportación por lotes de 100 registros con checkpoints persistentes. |
 | **Persistencia & Auth** | `supabase` | PostgreSQL 15+, pgvector (1024d), Supabase Auth (JWT), Supabase Storage | Infraestructura DBaaS administrada, autenticación de desarrolladores y almacenamiento seguro de documentos CV. |
 
 ---
@@ -179,6 +180,11 @@ graph TD
 
 > **Decisión 2: Desacoplamiento Offline de Data Scraping y Clustering**
 > La adquisición y el agrupamiento de ofertas de empleo operan de manera completamente desacoplada de la API en línea. `devalign-scraping` y `devalign-ml` se ejecutan como procesos batch y sincronizan datos directamente con PostgreSQL. La API expone un endpoint informativo `/api/v1/scraper/status` sin asumir sobrecarga computacional de scraping o entrenamiento en caliente.
+>
+> Para garantizar robustez operativa y eficiencia de recursos, `devalign-scraping` implementa:
+> 1. **Segregación de Parsers:** Separación estricta entre `BrowserParser` (Playwright headless para sitios dinámicos y protegidos como Computrabajo con inicialización *lazy* vía `nullcontext()`) y `HttpParser` (`requests.Session` con pool de conexiones y adaptadores de reintento HTTP para APIs de alto rendimiento como GetOnBoard, Remotive, Arbeitnow y WeWorkRemotely), eliminando dependencias de instalación de navegadores en CI para parsers HTTP.
+> 2. **Sincronización Taxonómica en Ingesta:** `SkillTaxonomyService` sincroniza el vocabulario de habilidades directamente desde la tabla canónica `skills` de Supabase, almacenándolo en una caché local con TTL de 7 días y respaldo *offline* (`skills_taxonomy.json`), minimizando llamadas a red y evitando contaminación con cadenas crudas.
+> 3. **Persistencia Resiliente por Lotes:** `SupabaseExporter` ejecuta inserciones en bloques atómicos de 100 ofertas, propagando excepciones de base de datos a `SessionManager` para congelar el checkpoint y evitar omisión involuntaria de páginas ante fallos de conectividad.
 
 > **Decisión 3: Ecosistema LLM Híbrido y Estabilidad Vectorial Unificada**
 > Se mantiene una separación rigurosa entre tareas de generación semántica y operaciones vectoriales:
@@ -201,5 +207,3 @@ graph TD
 - [🗺️ Roadmap de Producto](ROADMAP.md)
 - [🎯 Alcance MVP](SCOPE.md)
 - [📄 Documento de Requerimientos de Producto (PRD)](PRD.md)
-- [📋 Product Backlog](PRODUCT_BACKLOG.md)
-- [🏃 Sprint Backlog](SPRINT_BACKLOG.md)

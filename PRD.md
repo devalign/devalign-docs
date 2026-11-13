@@ -20,7 +20,7 @@ Desarrollar un sistema inteligente que permita identificar automáticamente la e
 
 ### Alcance del MVP
 
-- **Inteligencia de Mercado (Offline):** Recolectar y procesar ofertas laborales de **Computrabajo** (Playwright + BS4) y **GetOnBoard** (API REST) mediante scraping local (`devalign-scraping`) para descubrir clústeres tecnológicos vivos en el mercado.
+- **Inteligencia de Mercado (Offline):** Recolectar y procesar ofertas laborales de portales multi-país LATAM e internacionales (**Computrabajo** en PE, CO, CL, MX, AR; **GetOnBoard**, **Remotive**, **Arbeitnow**, **WeWorkRemotely**) mediante scraping local batch (`devalign-scraping`) con taxonomía sincronizada para alimentar el pipeline de clustering de mercado.
 - **Profiling Inteligente (Online):** Procesar el CV del usuario (PDF/DOCX) mediante LLMs en segundo plano (Groq Llama 3.3 en desarrollo / OpenAI gpt-4o-mini en producción) para extraer su perfil, experiencia laboral, educación e identificar sus competencias iniciales.
 - **Normalización de Habilidades 3-etapas:** Coincidencia exacta O(1) en aliases, búsqueda semántica vectorial (Voyage AI, cosine >= 0.88) y fallback LLM para skills no mapeadas.
 - **Inferencia Ascendente de Habilidades:** Expandir competencias mediante arcos del grafo de conocimiento (`BELONGS_TO`, `REQUIRES`, `ALTERNATIVE_TO`) con trazabilidad (`inferred_from`).
@@ -40,10 +40,11 @@ Desarrollar un sistema inteligente que permita identificar automáticamente la e
 El sistema está implementado bajo una arquitectura desacoplada y modular con cuatro repositorios:
 
 ### Módulo de Ingesta y Scraping (`devalign-scraping`)
-- **Portales:** Computrabajo Perú (Playwright + BeautifulSoup) y GetOnBoard (API REST)
-- **Estrategia:** Strategy Pattern, Rate Limiting, Checkpoints, Auto-Resume
-- **Filtrado:** Dos capas de filtrado IT (título/URL y análisis profundo)
-- **Salida:** Exportación a Supabase (upsert) o JSON local
+- **Portales:** Computrabajo multi-país (PE, CO, CL, MX, AR), GetOnBoard, Remotive, Arbeitnow y WeWorkRemotely
+- **Arquitectura:** Segregación de parsers (`BrowserParser` con Playwright lazy-loaded vs `HttpParser` con `requests.Session` y reintentos automáticos), Strategy Pattern y SessionManager con checkpoints atómicos y auto-resume
+- **Taxonomía en Ingesta:** `SkillTaxonomyService` sincronizado con la tabla `skills` de Supabase, caché local TTL de 7 días y respaldo offline empaquetado (`skills_taxonomy.json`)
+- **Filtrado & Enriquecimiento:** Filtro IT robusto de 2 capas, extracción estructurada (salarios multi-moneda LATAM normalizados a USD, experiencia, país) y habilidades técnicas/blandas tipadas
+- **Salida:** Exportación por lotes de 100 ofertas a Supabase con retención de checkpoints ante fallos de conexión o exportación a JSON local
 
 ### Módulo de Inteligencia y Servicio API (`devalign-api`)
 - **Arquitectura:** Clean Architecture (Delivery, ML Engine, Scraper, Shared)
@@ -74,7 +75,7 @@ El sistema está implementado bajo una arquitectura desacoplada y modular con cu
 - **ML / Analítica:** UMAP + HDBSCAN (offline), Voyage AI embeddings
 - **LLM:** Groq API (Llama 3.3 70B) / OpenAI API (gpt-4o-mini)
 - **Frontend:** Next.js 16, React 19, Tailwind CSS v4, shadcn/ui, Framer Motion
-- **Scraping:** Playwright, BeautifulSoup, lxml
+- **Scraping:** Playwright, BeautifulSoup4, requests, lxml
 - **Infraestructura:** Docker, Vercel (frontend), Railway/Koyeb (API)
 
 ---
@@ -87,5 +88,3 @@ El sistema está implementado bajo una arquitectura desacoplada y modular con cu
 - [Lógica Core e Inferencia](MODEL.md)
 - [Roadmap de Producto](ROADMAP.md)
 - [Alcance MVP](SCOPE.md)
-- [Product Backlog](PRODUCT_BACKLOG.md)
-- [Sprint Backlog](SPRINT_BACKLOG.md)
