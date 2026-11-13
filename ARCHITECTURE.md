@@ -84,13 +84,18 @@ sequenceDiagram
     API->>API: Extraer texto crudo (pypdf / python-docx)
     API->>LLM: Prompt estructurado zero-waste (skills, exp, educación, rol)
     LLM-->>API: JSON estructurado
-    API->>DB: Persistir extracted_data en cv_documents
-    API->>DB: Actualizar status → skills_detected
+    opt Detección Progresiva Temprana
+        API->>DB: Actualizar status → skills_detected_partial
+        Web->>API: GET /api/v1/me/cvs/{cv_id}/status (react-query refetchInterval)
+        API-->>Web: {status: "skills_detected_partial", extracted_skills: [...]}
+        Web-->>Usuario: Mostrar banner de extracción progresiva en UI
+    end
+    API->>DB: Actualizar status final de fase → skills_detected
 
-    Note over Web,API: Cliente sondea cada 2s
+    Note over Web,API: Cliente consulta estado (react-query refetchInterval dinámico)
     Web->>API: GET /api/v1/me/cvs/{cv_id}/status
     API-->>Web: {status: "skills_detected", extracted_skills: [...]}
-    Web-->>Usuario: Presentar habilidades extraídas para revisión/edición
+    Web-->>Usuario: Presentar habilidades extraídas completas para revisión/edición
 
     Note over Usuario,API: Fase 2 - Finalización y Diagnóstico (Disparada por Usuario)
     Usuario->>Web: Confirmar/Editar habilidades (vía Autocomplete) y solicitar diagnóstico
