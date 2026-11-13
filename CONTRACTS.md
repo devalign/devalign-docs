@@ -188,7 +188,9 @@ Authorization: Bearer <JWT_TOKEN>
   "error_message": null
 }
 ```
-*Estados posibles del ciclo de vida:* `none`, `processing`, `skills_detected`, `completed`, `failed`.
+*Estados posibles del ciclo de vida:* `none`, `processing`, `skills_detected_partial`, `skills_detected`, `completed`, `failed`.
+- `skills_detected_partial`: Estado intermedio progresivo donde se han detectado habilidades técnicas preliminares en streaming/fase temprana y se devuelven al cliente mientras concluye el pipeline de análisis.
+- `skills_detected`: Extracción completa estructurada finalizada con éxito, lista para confirmación del usuario.
 
 ---
 
@@ -217,7 +219,7 @@ Authorization: Bearer <JWT_TOKEN>
 ---
 
 ### 8. `GET /api/v1/me/cvs/{cv_id}/status`
-**Descripción:** Obtiene el estado detallado de un CV específico. Cuando el estado es `skills_detected`, incluye la lista de habilidades extraídas (`extracted_skills`) con sus evidencias para validación humana en la UI.
+**Descripción:** Obtiene el estado detallado de un CV específico. Cuando el estado es `skills_detected` o `skills_detected_partial`, incluye la lista de habilidades extraídas (`extracted_skills`) con sus evidencias para retroalimentación inmediata o validación humana en la UI.
 
 - **Método:** `GET`
 - **Autenticación:** Obligatoria
