@@ -326,7 +326,7 @@ Especialidades y macro-perfiles descubiertos mediante clustering no supervisado 
 | Campo | Tipo | Constraints | Descripción |
 |---|---|---|---|
 | `cluster_id` | UUID | PK, DEFAULT uuid_generate_v4() | Identificador único de la especialidad. |
-| `name` | VARCHAR(150) | NOT NULL | Nombre generado por LLM (ej. `Cloud Backend Python`). |
+| `name` | VARCHAR(150) | NOT NULL | Nombre inferido por la estrategia de nombrado (ej. `Cloud Backend Python`). |
 | `description` | TEXT | NULL | Resumen de tecnologías dominantes y volumen de ofertas. |
 | `job_offer_count`| INTEGER | NOT NULL, DEFAULT 0 | Total de ofertas clasificadas dentro del clúster. |
 | `centroid_vec` | VECTOR(1024) | NULL | Centroide vectorial promedio de las ofertas del clúster. |

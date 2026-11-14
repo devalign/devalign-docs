@@ -133,20 +133,24 @@ flowchart LR
     Offers[Ofertas Laborales LATAM] --> Vectorizer[Media-Pooling Ponderado Voyage AI 1024d]
     Vectorizer --> UMAP[Reducción UMAP: 1024d → 15d]
     UMAP --> HDBSCAN[HDBSCAN min_cluster_size=15 + Smooth IDF]
-    HDBSCAN --> Outliers[Preservación & Reasignación de Outliers]
-    Outliers --> LLM[Enriquecimiento Asíncrono LLM Groq/OpenAI]
-    LLM --> Metrics[Silhouette Score & Topología Desplegada en DB]
+    HDBSCAN --> Outliers[Preservación de Ruido -1 sin Reasignación]
+    Outliers --> Naming[ClusterNamingStrategy: Taxonomía / LLM]
+    Naming --> Gate{Silhouette >= 0.35?}
+    Gate -->|No| Abort[Abortar Despliegue en CI/CD]
+    Gate -->|Sí| Sync[Sincronización In-Place Coseno >= 0.88 en DB]
 ```
 
 ### Parámetros y Configuración del Pipeline
 
 | Etapa | Algoritmo / Servicio | Parámetros Clave | Propósito |
 |---|---|---|---|
-| **Representación** | Voyage AI (`voyage-4-lite`) | Dimensión: 1024 | Vectores densos de alta fidelidad semántica. |
-| **Ponderación** | Smooth IDF | $\text{IDF}(t) = \ln\left(1 + \frac{N - n_t + 0.5}{n_t + 0.5}\right)$ | Reduce el impacto de herramientas ofimáticas genéricas. |
-| **Reducción** | UMAP | `n_neighbors=15`, `n_components=15`, `min_dist=0.0`, `metric=cosine` | Captura manifolds no lineales preservando vecindades locales. |
-| **Clustering** | HDBSCAN | `min_cluster_size=15`, `min_samples=2`, `metric=euclidean` | Detecta densidades naturales sin imponer número prefijado $K$. |
-| **Enriquecimiento** | Groq / OpenAI LLM | `temperature=0.1`, validación Pydantic | Generación de nombres legibles de especialidad y roles compatibles. |
+| **Representación** | Voyage AI (`voyage-4-lite`) | Dimensión: 1024 | Vectores densos de alta fidelidad semántica por oferta laboral. |
+| **Ponderación** | Smooth IDF | $\text{IDF}(t) = \ln\left(1 + \frac{N - n_t + 0.5}{n_t + 0.5}\right)$ | Reduce el sesgo de herramientas ofimáticas y librerías genéricas comunes. |
+| **Reducción** | UMAP | `n_neighbors=15`, `n_components=15`, `min_dist=0.0`, `metric=cosine` | Captura manifolds no lineales preservando vecindades locales y reduciendo la concentración de distancias. |
+| **Clustering** | HDBSCAN | `min_cluster_size=15`, `min_samples=2`, `metric=euclidean` | Agrupamiento por densidad sin fijar $K$. Aísla el ruido (`-1`) de forma controlada sin forzar reasignaciones artificiales. |
+| **Nombramiento** | `ClusterNamingStrategy` | `TaxonomyNamingStrategy` / `LLMNamingStrategy` (`temperature=0.1`) | Generación desacoplada, determinista y reproducible de títulos de especialidad y roles compatibles. |
+| **Normalización Salarial** | `SalaryNormalizer` | Conversión FX a USD y percentiles ($P_{25}, P_{50}, P_{75}$) | Estimación robusta de rangos salariales por tier con exclusión de outliers y sin datos ficticios ($N \ge 3$). |
+| **Calidad y Despliegue** | Quality Gate & In-Place Sync | Umbral Silhouette $\ge 0.35$, emparejamiento coseno $\ge 0.88$ | Despliegue seguro que preserva la integridad de `diagnostics` y `roadmaps` históricos de usuarios. |
 
 ---
 

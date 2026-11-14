@@ -138,9 +138,10 @@ graph TD
         DB2[(DB: job_offers + skills)] --> DataLoader[Data Loader & Embedding Matrix<br>Voyage AI 1024d]
         DataLoader --> UMAP[UMAP: 1024d → 15d]
         UMAP --> HDBSCAN[HDBSCAN min_cluster_size=15 + Smooth IDF]
-        HDBSCAN --> Outliers[Preservación & Reasignación de Outliers]
-        Outliers --> Enriched[Enriquecimiento Asíncrono LLM + Pydantic<br>Groq / OpenAI]
-        Enriched --> Deploy[(DB: clusters + cluster_skills + offer_skills)]
+        HDBSCAN --> Outliers[Preservación de Ruido (-1) sin Reasignación]
+        Outliers --> Naming[ClusterNamingStrategy: Taxonomía / LLM]
+        Naming --> SafeDeploy[Sincronización Segura In-Place (Coseno >= 0.88)<br>Zero User Data Loss]
+        SafeDeploy --> Deploy[(DB: clusters + cluster_skills + offer_skills)]
     end
 
     Exporter --> DB2
@@ -154,7 +155,7 @@ graph TD
 |---|---|---|---|
 | **API Backend** | `devalign-api` | Python 3.12+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2, structlog | Capa de negocio central, endpoints REST, orquestación de LLMs, normalización semántica, inferencia de grafo, cálculo de Weighted Jaccard e ICT Score. |
 | **Frontend Web** | `devalign-web` | Next.js 16 (App Router), React 19, Tailwind CSS v4, TypeScript, shadcn/ui, TanStack Query, Zustand, react-force-graph | Interfaz de usuario responsiva en español, visualización de diagnósticos Bento-Grid, radar de afinidades, autocompletado de habilidades y topología de mercado. |
-| **Machine Learning** | `devalign-ml` | Python 3.12+, UMAP, HDBSCAN, scikit-learn, Voyage AI SDK, Groq/OpenAI, Pydantic | Pipeline no supervisado offline para reducción dimensional, agrupación de ofertas laborales, cálculo de centroides vectoriales 1024d y etiquetado de clústeres. |
+| **Machine Learning** | `devalign-ml` | Python 3.12+, UMAP, HDBSCAN, scikit-learn, Voyage AI SDK, Groq/OpenAI, Pydantic, pytest, ruff | Pipeline no supervisado offline para reducción dimensional, agrupación de ofertas laborales, cálculo de centroides vectoriales 1024d, arquitectura desacoplada de nombramiento (`ClusterNamingStrategy`), normalización salarial y sincronización segura *in-place* sin pérdida de datos de usuario con Quality Gate (`Silhouette >= 0.35`). |
 | **Web Scraping** | `devalign-scraping` | Python 3.12+, Playwright, BeautifulSoup4, JSON-LD Parser, requests | Extracción masiva con segregación de parsers (`BrowserParser` y `HttpParser`), inicialización perezosa de navegador (`nullcontext`), extracción taxonómica sincronizada con Supabase (caché TTL 7 días) y exportación por lotes de 100 registros con checkpoints persistentes. |
 | **Persistencia & Auth** | `supabase` | PostgreSQL 15+, pgvector (1024d), Supabase Auth (JWT), Supabase Storage | Infraestructura DBaaS administrada, autenticación de desarrolladores y almacenamiento seguro de documentos CV. |
 
@@ -196,6 +197,13 @@ graph TD
 
 > **Decisión 5: Taxonomía Basada en Estándares Abiertos (Lightcast, SFIA y SWECOM)**
 > El catálogo de habilidades adopta una estructura de gobernanza donde las habilidades conceptuales se mapean a la taxonomía **Lightcast Open Skills**, complementada por marcos SFIA 9 y SWECOM. Esto desacopla las habilidades técnicas accionables de los conceptos sombrilla y estandariza las categorías de mercado.
+
+> **Decisión 6: Sincronización Segura In-Place y Control de Calidad en Clustering (`devalign-ml`)**
+> Los despliegues recurrentes del pipeline de clustering no supervisado en `devalign-ml` deben preservar la integridad referencial y los diagnósticos históricos de los usuarios:
+> 1. **Zero User Data Loss e In-Place Synchronization:** Se prohíbe la purga destructiva en cascada (`DELETE CASCADE` o `TRUNCATE`) sobre las tablas de clústeres. El pipeline implementa un emparejamiento por similitud de coseno sobre los centroides 1024d ($\ge 0.88$) entre los clústeres re-entrenados y los existentes en base de datos. Los clústeres coincidentes se actualizan *in-place* (preservando sus UUIDs foráneos en `diagnostics` y `roadmaps`), los nuevos clústeres se insertan y los obsoletos se archivan de manera no destructiva.
+> 2. **Aislamiento Controlado de Ruido:** Las ofertas clasificadas como ruido por HDBSCAN (`label = -1`) se preservan como no asignadas. No se fuerzan ni reasignan a clústeres existentes para prevenir la contaminación de los centroides y la pérdida de cohesión geométrica.
+> 3. **Arquitectura SOLID de Nombramiento y Normalización Salarial:** Se desacopla la generación de metadatos mediante la interfaz abstracta `ClusterNamingStrategy` (`TaxonomyNamingStrategy` determinista como motor primario y reproducible, y `LLMNamingStrategy` como enriquecedor semántico). `SalaryNormalizer` gestiona la conversión de divisas LATAM a USD y percentiles salariales sin sintetizar datos aleatorios, registrando valores nulos controlados cuando el soporte muestral es menor a 3 ofertas.
+> 4. **Quality Gates en CI/CD:** El pipeline automatizado en GitHub Actions valida estilo y tipos con `ruff` y 14 pruebas unitarias con `pytest`. El despliegue a base de datos (`--deploy`) se bloquea automáticamente si el coeficiente Silhouette interno en el espacio proyectado UMAP es menor a $0.35$.
 
 ---
 
