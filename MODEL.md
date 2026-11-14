@@ -37,6 +37,13 @@ Si no hay coincidencia exacta, se genera el vector del término usando **Voyage 
 ### Paso 3: Fallback LLM y Gobernanza de Catálogo
 Si la similitud vectorial es $< 0.88$, se invoca el motor LLM con validación de esquema para discernir si el término es un sinónimo semántico de un concepto existente o una habilidad técnica emergente. Si es nueva, se clasifica en estado `pending_review` o `canonical` según las políticas de gobernanza de la taxonomía.
 
+### 1.1. Pipeline de Extracción de CV: Separación de Catálogo y LLM de Perfil
+
+Para erradicar alucinaciones de habilidades y garantizar una experiencia de alta velocidad en la Fase 1 del análisis:
+
+1. **Extracción de Habilidades 100% Determinista (Fase A):** Se ejecuta en memoria mediante `scan_text_for_catalog_skills`. Escanea el texto crudo del currículum exclusivamente contra los nombres normalizados y aliases del catálogo oficial de Lightcast. Ninguna habilidad técnica es sintetizada por modelos generativos.
+2. **Síntesis de Metadatos de Perfil vía LLM (Fase B):** El motor LLM (Groq en desarrollo / OpenAI en producción) se invoca con `max_tokens = 300` y un timeout estricto de 15 segundos para inferir exclusivamente los metadatos de alto nivel del candidato: `current_job_role`, `years_experience` y `professional_summary`.
+
 ---
 
 ## 2. Inferencia Ascendente sobre Grafo de Conocimiento (Knowledge Graph)
@@ -83,24 +90,49 @@ Donde:
   \end{cases}
   \]
 
+### 3.1. Servicio de Dominio `AffinityCalculator` y Radar de Dominios
+
+El cálculo de afinidades está encapsulado en el servicio de dominio puro `src/ml_engine/domain/services/affinity_calculator.py` (con cobertura unitaria del $89\%$), desacoplado de la capa de aplicación y de la base de datos:
+
+1. **Radar Canónico de 7 Dominios:** Los dominios del mercado se normalizan a un conjunto cerrado: `Backend`, `Frontend`, `Data`, `DevOps`, `QA`, `Mobile` y `Cloud`.
+2. **Filtrado por Adyacencia y Umbral de Radar:**
+   - Para evitar emparejamientos espurios entre especialidades desconectadas (e.g. Frontend puro emparejado con Data Engineering por una librería aislada), el motor define una matriz de adyacencia directa (`DOMAIN_ADJACENCY`).
+   - Si un clúster no pertenece a un dominio adyacente al dominio dominante del candidato, se excluye salvo que el puntaje del radar del desarrollador en dicho dominio alcance o supere `DOMAIN_RADAR_THRESHOLD = 0.35` ($35\%$).
+3. **Multiplicador de Relevancia de Dominio:** Penaliza progresivamente con un piso mínimo de $0.50$ clústeres cuya disciplina principal difiere sustancialmente del foco del perfil.
+
 ---
 
 ## 4. Índice de Competencia Técnica (ICT Score)
 
-El **ICT Score** evalúa el nivel de dominio y confianza en cada habilidad del desarrollador en una escala continua de $0.0$ a $10.0$:
+El **ICT Score** evalúa el nivel de dominio y confianza en cada habilidad del desarrollador en una escala continua de $0.0$ a $10.0$, unificada en la entidad de dominio `Skill.calculate_ict`:
 
 \[
-\text{ICT Score} = \min\left(10.0, P_{\text{autodidacta}} + P_{\text{proyectos}} + P_{\text{experiencia}} + P_{\text{certificación}}\right)
+\text{ICT Score} = \min\left(10.0, P_{\text{experiencia}} + P_{\text{proyectos}} + P_{\text{capacitación}}\right)
 \]
 
-### Tabla de Puntuación de Evidencias
+### Formulación de Retornos Decrecientes
 
-| Fuente de Evidencia | Variable | Puntos Otorgados | Justificación |
-|---|---|---|---|
-| **Autodidacta** | `self_taught` | $+1.0$ punto | Demuestra proactividad y capacidad de aprendizaje continuo. |
-| **Proyectos Personales** | `personal_projects` | $+2.0$ puntos | Demuestra aplicación práctica en código ejecutable independiente. |
-| **Años de Experiencia** | `years_of_experience` | $+3.0$ puntos / año | Factor dominante que refleja horas de exposición en producción. |
-| **Certificación Oficial** | `has_certification` | $+4.0$ puntos | Validación formal emitida por entidades u organismos de la industria. |
+A diferencia de modelos lineales que saturan artificialmente el puntaje, Devalign modela la experiencia laboral bajo retornos decrecientes que reflejan la curva real de maestría técnica:
+
+#### Años de Experiencia ($P_{\text{experiencia}}$)
+\[
+P_{\text{experiencia}} = \begin{cases}
+5.0 & \text{si } \text{años} \ge 5 \\
+4.7 & \text{si } \text{años} = 4 \\
+4.2 & \text{si } \text{años} = 3 \\
+3.5 & \text{si } \text{años} = 2 \\
+2.5 & \text{si } \text{años} = 1 \\
+0.0 & \text{si } \text{años} = 0
+\end{cases}
+\]
+
+#### Evidencias Prácticas y Capacitación
+- **Proyectos Personales ($P_{\text{proyectos}}$):** $+3.0$ puntos si `personal_projects` es verdadero ($0.0$ en caso contrario), premiando la aplicación práctica en código independiente.
+- **Capacitación Formal y Continua ($P_{\text{capacitación}}$):**
+  \[
+  P_{\text{capacitación}} = \min\left(2.0, (1.0 \cdot \mathbf{1}_{\text{self\_taught}}) + (2.0 \cdot \mathbf{1}_{\text{has\_certification}})\right)
+  \]
+  Tope estricto de $+2.0$ puntos combinados entre formación autodidacta ($+1.0$) y certificaciones de la industria ($+2.0$).
 
 ---
 

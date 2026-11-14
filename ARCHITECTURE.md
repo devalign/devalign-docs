@@ -80,10 +80,12 @@ sequenceDiagram
     API->>DB: Registrar CV (status: processing)
     API-->>Web: 201 Created (cv_id, status: processing)
 
-    Note over API,LLM: Fase 1 - Extracción Estructurada Zero-Waste (Background Task)
+    Note over API,LLM: Fase 1 - Extracción Híbrida Desacoplada (Background Task)
     API->>API: Extraer texto crudo (pypdf / python-docx)
-    API->>LLM: Prompt estructurado zero-waste (skills, exp, educación, rol)
-    LLM-->>API: JSON estructurado
+    API->>Norm: Fase 1A: Escaneo determinista en memoria contra catálogo Lightcast
+    Norm-->>API: Habilidades estandarizadas detectadas (100% catalog-based)
+    API->>LLM: Fase 1B: Síntesis de metadatos de perfil (rol, años, resumen - máx 300 tokens, timeout 15s)
+    LLM-->>API: JSON estructurado con metadatos de perfil
     opt Detección Progresiva Temprana
         API->>DB: Actualizar status → skills_detected_partial
         Web->>API: GET /api/v1/me/cvs/{cv_id}/status (react-query refetchInterval)
@@ -153,7 +155,7 @@ graph TD
 
 | Módulo | Repositorio | Tecnologías | Responsabilidad Core |
 |---|---|---|---|
-| **API Backend** | `devalign-api` | Python 3.12+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2, structlog | Capa de negocio central, endpoints REST, orquestación de LLMs, normalización semántica, inferencia de grafo, cálculo de Weighted Jaccard e ICT Score. |
+| **API Backend** | `devalign-api` | Python 3.12+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2, structlog, uv | Capa de negocio central, endpoints REST, orquestación de LLMs, normalización semántica, inferencia de grafo, servicio de dominio AffinityCalculator, cálculo de Weighted Jaccard e ICT Score unificado, y contenedor Docker seguro non-root. |
 | **Frontend Web** | `devalign-web` | Next.js 16 (App Router), React 19, Tailwind CSS v4, TypeScript, shadcn/ui, TanStack Query, Zustand, react-force-graph | Interfaz de usuario responsiva en español, visualización de diagnósticos Bento-Grid, radar de afinidades, autocompletado de habilidades y topología de mercado. |
 | **Machine Learning** | `devalign-ml` | Python 3.12+, UMAP, HDBSCAN, scikit-learn, Voyage AI SDK, Groq/OpenAI, Pydantic, pytest, ruff | Pipeline no supervisado offline para reducción dimensional, agrupación de ofertas laborales, cálculo de centroides vectoriales 1024d, arquitectura desacoplada de nombramiento (`ClusterNamingStrategy`), normalización salarial y sincronización segura *in-place* sin pérdida de datos de usuario con Quality Gate (`Silhouette >= 0.35`). |
 | **Web Scraping** | `devalign-scraping` | Python 3.12+, Playwright, BeautifulSoup4, JSON-LD Parser, requests | Extracción masiva con segregación de parsers (`BrowserParser` y `HttpParser`), inicialización perezosa de navegador (`nullcontext`), extracción taxonómica sincronizada con Supabase (caché TTL 7 días) y exportación por lotes de 100 registros con checkpoints persistentes. |
@@ -187,13 +189,16 @@ graph TD
 > 2. **Sincronización Taxonómica en Ingesta:** `SkillTaxonomyService` sincroniza el vocabulario de habilidades directamente desde la tabla canónica `skills` de Supabase, almacenándolo en una caché local con TTL de 7 días y respaldo *offline* (`skills_taxonomy.json`), minimizando llamadas a red y evitando contaminación con cadenas crudas.
 > 3. **Persistencia Resiliente por Lotes:** `SupabaseExporter` ejecuta inserciones en bloques atómicos de 100 ofertas, propagando excepciones de base de datos a `SessionManager` para congelar el checkpoint y evitar omisión involuntaria de páginas ante fallos de conectividad.
 
-> **Decisión 3: Ecosistema LLM Híbrido y Estabilidad Vectorial Unificada**
+> **Decisión 3: Ecosistema LLM Híbrido, Síntesis de Perfil y Estabilidad Vectorial Unificada**
 > Se mantiene una separación rigurosa entre tareas de generación semántica y operaciones vectoriales:
-> 1. **Extracción y Nombramiento Semántico (LLMs):** Alterna dinámicamente según `APP_ENV`. En desarrollo utiliza **Groq** (`llama-3.3-70b-versatile`) para máxima velocidad y cero coste; en producción utiliza **OpenAI** (`gpt-4o-mini`) con structured outputs para garantizar formato JSON sin fisuras.
+> 1. **Extracción y Nombramiento Semántico (LLMs):** Alterna dinámicamente según `APP_ENV`. En desarrollo utiliza **Groq** (`llama-3.3-70b-versatile`) para máxima velocidad y cero coste; en producción utiliza **OpenAI** (`gpt-4o-mini`) con structured outputs para garantizar formato JSON sin fisuras. Los modelos generativos **no extraen habilidades de CV** (labor reservada al escaneo de catálogo determinista); se limitan a sintetizar metadatos de perfil (`current_job_role`, `years_experience`, `professional_summary`) con un tope de 300 tokens y timeout de 15 segundos.
 > 2. **Espacio Vectorial (Embeddings):** Utiliza **Voyage AI** (`voyage-4-lite`, 1024 dimensiones) de forma unificada en todos los entornos, garantizando la invariabilidad de las distancias matemáticas y umbrales de similitud de coseno en `pgvector`.
 
-> **Decisión 4: Procesamiento de CV en Dos Fases con Puerta de Validación Humana**
-> En lugar de ejecutar un análisis de caja negra directo a diagnóstico final, el flujo de CV divide el proceso en **Fase 1 (Extracción estructurada `skills_detected`)** y **Fase 2 (Normalización y Diagnóstico `completed`)**. Esto permite al usuario inspeccionar, añadir o retirar habilidades mediante autocompletado antes de calcular la afinidad y persistir brechas.
+> **Decisión 4: Procesamiento de CV en Dos Fases con Extracción de Catálogo en Memoria**
+> En lugar de ejecutar un análisis de caja negra directo a diagnóstico final, el flujo de CV divide el proceso en **Fase 1 (Extracción estructurada `skills_detected`)** y **Fase 2 (Normalización y Diagnóstico `completed`)**:
+> 1. **Fase 1A (Determinista):** Escaneo en memoria con `scan_text_for_catalog_skills` contra el vocabulario oficial de Lightcast y tabla de aliases, logrando 0% alucinaciones de skills y tiempos de respuesta sub-segundo.
+> 2. **Fase 1B (LLM Metadata):** Inferencia rápida de título de puesto, experiencia global y resumen profesional con el LLM liviano.
+> 3. **Puerta Humana y Fase 2:** El usuario inspecciona, añade o retira habilidades mediante autocompletado en el frontend antes de disparar el cálculo formal de afinidad, ICT Score y persistencia de brechas.
 
 > **Decisión 5: Taxonomía Basada en Estándares Abiertos (Lightcast, SFIA y SWECOM)**
 > El catálogo de habilidades adopta una estructura de gobernanza donde las habilidades conceptuales se mapean a la taxonomía **Lightcast Open Skills**, complementada por marcos SFIA 9 y SWECOM. Esto desacopla las habilidades técnicas accionables de los conceptos sombrilla y estandariza las categorías de mercado.
@@ -204,6 +209,13 @@ graph TD
 > 2. **Aislamiento Controlado de Ruido:** Las ofertas clasificadas como ruido por HDBSCAN (`label = -1`) se preservan como no asignadas. No se fuerzan ni reasignan a clústeres existentes para prevenir la contaminación de los centroides y la pérdida de cohesión geométrica.
 > 3. **Arquitectura SOLID de Nombramiento y Normalización Salarial:** Se desacopla la generación de metadatos mediante la interfaz abstracta `ClusterNamingStrategy` (`TaxonomyNamingStrategy` determinista como motor primario y reproducible, y `LLMNamingStrategy` como enriquecedor semántico). `SalaryNormalizer` gestiona la conversión de divisas LATAM a USD y percentiles salariales sin sintetizar datos aleatorios, registrando valores nulos controlados cuando el soporte muestral es menor a 3 ofertas.
 > 4. **Quality Gates en CI/CD:** El pipeline automatizado en GitHub Actions valida estilo y tipos con `ruff` y 14 pruebas unitarias con `pytest`. El despliegue a base de datos (`--deploy`) se bloquea automáticamente si el coeficiente Silhouette interno en el espacio proyectado UMAP es menor a $0.35$.
+
+> **Decisión 7: Servicios de Dominio Puro, Deduplicación de Repositorio y Hardening de Contenedores (`devalign-api`)**
+> Para mantener la mantenibilidad a escala y satisfacer estándares de calidad y seguridad de producción:
+> 1. **Servicio de Dominio de Afinidad (`AffinityCalculator`):** Desacopla la lógica matemática de afinidad y el radar de 7 dominios canónicos (`Backend`, `Frontend`, `Data`, `DevOps`, `QA`, `Mobile`, `Cloud`) hacia `src/ml_engine/domain/services/affinity_calculator.py` con una cobertura de pruebas unitarias del $89\%$, reduciendo el tamaño del caso de uso principal en más de 500 líneas y garantizando retrocompatibilidad con `__all__`.
+> 2. **Deduplicación de Persistencia SQL:** Se unifica la inserción de afinidades y brechas en `UserProfileRepository` mediante el método privado `_persist_affinities_diagnostics`, eliminando duplicidad entre `save_profile` y `save_single_diagnostic`.
+> 3. **Hardening Criptográfico JWT:** Validación incondicional de firma criptográfica (`verify_signature = True`) con algoritmo `HS256` y clave `SUPABASE_JWT_SECRET`, eliminando bypasses en desarrollo.
+> 4. **Seguridad y Reproducibilidad en Dockerfile:** Inclusión de `uv.lock` con `uv sync --frozen --no-dev --no-editable` para builds deterministas, y ejecución en runtime bajo un usuario del sistema no privilegiado `appuser` (UID 1000).
 
 ---
 

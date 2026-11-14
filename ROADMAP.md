@@ -27,16 +27,17 @@ gantt
 ### 📍 Fase 1: MVP (Ingeniería y Diagnóstico Core) — *Consolidada*
 * **Objetivo:** Construir la infraestructura relacional de habilidades, el pipeline de clustering de mercado LATAM, la extracción en dos fases de currículums y el panel de diagnóstico interactivo.
 * **Características Entregadas:**
-  - Carga asíncrona de CV (PDF/DOCX) en 2 fases: Extracción estructurada (`skills_detected`) y Puerta de validación humana antes del diagnóstico (`completed`).
+  - Carga asíncrona de CV (PDF/DOCX) en 2 fases: Extracción 100% determinista de skills en memoria contra catálogo Lightcast (`skills_detected`) y síntesis ultra-rápida de metadatos de perfil vía LLM (300 tokens, 15s), con puerta de validación humana antes del diagnóstico (`completed`).
   - Catálogo de gobernanza de habilidades con taxonomía estándar basada en **Lightcast Open Skills**, SFIA 9 y SWECOM.
   - Normalización híbrida: Coincidencia exacta $O(1)$ en aliases $\to$ Embeddings Voyage AI (`voyage-4-lite`, 1024d, $\ge 0.88$) $\to$ Fallback LLM estructurado.
   - Inferencia ascendente en grafo de conocimiento (`BELONGS_TO` / `REQUIRES`) con trazabilidad (`inferred_from`).
-  - Algoritmo de alineación por **Weighted Jaccard** con 30% de crédito parcial por coincidencia de macro-dominios.
-  - Cálculo de Índice de Competencia Técnica (**ICT Score** 0-10) y derivación dinámica de senioridad.
+  - Servicio de dominio puro `AffinityCalculator` con algoritmo de alineación por **Weighted Jaccard**, radar canónico de 7 dominios y filtrado por umbral de adyacencia (35%).
+  - Cálculo de Índice de Competencia Técnica (**ICT Score** 0-10) unificado bajo retornos decrecientes y derivación dinámica de senioridad.
   - Dashboard Bento-Grid con radar de afinidad, desglose de brechas priorizadas (`critical`, `high`, `medium`) y topología interactiva de grafo en 2D/3D.
   - Autocompletado de habilidades con clasificación de estándares en tiempo real (`SkillAutocomplete`).
   - Scraping multi-portal LATAM (Computrabajo en 5 países, GetOnBoard, Remotive, WeWorkRemotely, Arbeitnow) con segregación Browser/HttpParser, taxonomía sincronizada con Supabase (TTL 7d) y persistencia batch en bloques de 100.
   - Pipeline de clustering UMAP + HDBSCAN con Smooth IDF, preservación de outliers y nombrado LLM con validación Pydantic.
+  - Hardening de producción en `devalign-api`: Dockerfile non-root reproducible con `uv.lock`, verificación criptográfica estricta de JWT (HS256) y 107 tests unitarios automatizados en CI.
   - 15 tablas relacionales y 23 migraciones Alembic gestionadas en `devalign-api`.
 * **Criterio de Salida:** Procesamiento exitoso de currículos con una tasa de normalización correcta superior al 85% y recálculo dinámico en menos de 2 segundos.
 

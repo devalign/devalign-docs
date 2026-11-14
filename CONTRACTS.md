@@ -13,6 +13,7 @@ Authorization: Bearer <JWT_TOKEN>
 ```
 
 - **Prefijo base de la API:** `/api/v1`
+- **Verificación Criptográfica Estricta:** La API verifica incondicionalmente la firma del token (`verify_signature: True`) usando el algoritmo `HS256` y la clave secreta `SUPABASE_JWT_SECRET` en todos los entornos, mitigando falsificación de identidad o escalación de privilegios.
 - **Aprovisionamiento JIT (Just-In-Time):** Si un usuario autenticado en Supabase realiza su primera llamada a `/api/v1/me`, la API sincroniza automáticamente el registro en la tabla pública `users`.
 - **CORS:** Configurado para admitir orígenes locales y expresiones regulares (`CORS_ORIGIN_REGEX`) para previsualizaciones dinámicas en Vercel.
 
@@ -135,7 +136,7 @@ Authorization: Bearer <JWT_TOKEN>
 ---
 
 ### 3. `DELETE /api/v1/me`
-**Descripción:** Elimina permanentemente la cuenta del usuario, purgando sus archivos de Supabase Storage, registros relacionales en PostgreSQL y su identidad en Supabase Auth.
+**Descripción:** Elimina permanentemente la cuenta del usuario, purgando sus archivos de Supabase Storage, registros relacionales en PostgreSQL y su identidad en Supabase Auth mediante una llamada asíncrona no bloqueante (`asyncio.to_thread`).
 
 - **Método:** `DELETE`
 - **Autenticación:** Obligatoria
@@ -321,7 +322,7 @@ Authorization: Bearer <JWT_TOKEN>
 ---
 
 ### 12. `PUT /api/v1/me/skills`
-**Descripción:** Sobrescribe manualmente las habilidades del perfil activo y recalcula en caliente el diagnóstico, las afinidades y las brechas.
+**Descripción:** Sobrescribe y sincroniza manualmente las habilidades del perfil activo, preservando los metadatos de evidencia (años de experiencia, proyectos personales, autodidacta y certificación), recalculando en caliente el ICT Score canónico bajo retornos decrecientes, y actualizando afinidades y brechas contra los clústeres de mercado.
 
 - **Método:** `PUT`
 - **Autenticación:** Obligatoria
@@ -329,13 +330,28 @@ Authorization: Bearer <JWT_TOKEN>
 ```json
 {
   "skills": [
-    { "name": "Python", "skill_type": "tech" },
-    { "name": "PostgreSQL", "skill_type": "tech" },
-    { "name": "Docker", "skill_type": "tech" }
+    {
+      "name": "Python",
+      "skill_type": "tech",
+      "years_of_experience": 4,
+      "personal_projects": true,
+      "self_taught": false,
+      "has_certification": true,
+      "is_custom": false
+    },
+    {
+      "name": "PostgreSQL",
+      "skill_type": "tech",
+      "years_of_experience": 3,
+      "personal_projects": true,
+      "self_taught": true,
+      "has_certification": false,
+      "is_custom": false
+    }
   ]
 }
 ```
-- **Respuesta `200 OK`:** Objeto `UserProfileDTO` recalculado.
+- **Respuesta `200 OK`:** Objeto `UserProfileDTO` recalculado con nuevos diagnósticos y radar de afinidades.
 
 ---
 
