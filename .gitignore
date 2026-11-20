@@ -1,0 +1,8 @@
+# Microsoft Word lock and temporary files
+~$*.docx
+~$*.doc
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
